@@ -1,0 +1,6 @@
+# 使用全新专用数据库。该 profile 不生成演示账号与演示数据。
+spring:
+  datasource:
+    url: ${TRAVEL_DB_URL:jdbc:mysql://127.0.0.1:3306/travel_agency_v2?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai}
+    username: ${TRAVEL_DB_USER}
+    password: ${TRAVEL_DB_PASSWORD}

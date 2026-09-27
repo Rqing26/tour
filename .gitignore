@@ -1,0 +1,17 @@
+# Build and local data
+target/
+frontend/node_modules/
+frontend/dist/
+src/main/resources/static/*
+!src/main/resources/static/.gitkeep
+data/
+.runtime/
+*.log
+*.pid
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+*.iml
+out/

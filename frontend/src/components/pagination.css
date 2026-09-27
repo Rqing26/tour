@@ -1,0 +1,21 @@
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  color: #61746b;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pagination-controls .icon-button {
+  border: 1px solid #dfe5dc;
+  border-radius: 7px;
+  width: 30px;
+  height: 30px;
+}
+
+.pagination-controls button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
