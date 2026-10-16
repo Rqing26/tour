@@ -141,11 +141,39 @@ svg {
 @keyframes enter {
   from {
     opacity: 0;
-    transform: translateY(7px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes tab-enter {
+  from {
+    transform: scaleX(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 1;
   }
 }
 .btn {
@@ -266,6 +294,39 @@ svg {
 .icon-button.danger:hover:not(:disabled) {
   color: #a8493f;
   background: #fcf0ed;
+}
+:is(
+    .btn,
+    .icon-button,
+    .nav-item,
+    .topbar-search,
+    .route-book-button,
+    .text-link
+  )
+  > .lucide {
+  stroke-width: 1.8;
+  transition: transform var(--motion-fast) var(--motion-ease);
+}
+.icon-button > .lucide {
+  width: 20px;
+  height: 20px;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  :is(.btn, .route-book-button, .journey-feature-bottom button):hover:not(
+      :disabled
+    )
+    > .lucide-arrow-right {
+    transform: translateX(2px);
+  }
+  :is(.btn, .text-link):hover:not(:disabled) > .lucide-arrow-up-right {
+    transform: translate(1px, -1px);
+  }
+  .icon-button:hover:not(:disabled) > .lucide {
+    transform: scale(1.08);
+  }
+}
+.journey-feature-bottom button > .lucide {
+  transition: transform var(--motion-fast) var(--motion-ease);
 }
 .text-button,
 .text-link {
@@ -424,6 +485,9 @@ svg {
   font-size: 13px;
   font-weight: 400;
   text-align: left;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
 .nav-item span {
   flex: 1;
@@ -576,7 +640,7 @@ svg {
   margin: 0 auto;
   padding: 34px 37px 30px;
   flex: 1;
-  animation: enter 0.25s ease both;
+  animation: enter var(--motion-standard) var(--motion-ease) both;
 }
 .section-heading {
   display: flex;
@@ -1149,8 +1213,8 @@ svg {
   border-radius: 13px;
   overflow: hidden;
   transition:
-    box-shadow 0.2s,
-    transform 0.2s;
+    box-shadow var(--motion-standard) var(--motion-ease),
+    transform var(--motion-standard) var(--motion-ease);
 }
 .route-card:hover {
   box-shadow: 0 8px 25px #2544240a;
@@ -1310,6 +1374,7 @@ svg {
   padding: 8px 9px;
   border-radius: var(--control-radius);
   font-size: 12px;
+  transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .route-book-button:hover {
   background: #e7efdb;
@@ -1345,6 +1410,10 @@ svg {
   color: #637256;
   position: relative;
   white-space: nowrap;
+  transition: color var(--motion-fast) var(--motion-ease);
+}
+.tabs button:hover:not(:disabled) {
+  color: var(--primary);
 }
 .tabs button.active {
   color: #537642;
@@ -1359,6 +1428,7 @@ svg {
   height: 2px;
   background: #6e9158;
   border-radius: 2px;
+  animation: tab-enter var(--motion-fast) var(--motion-ease) both;
 }
 .tabs button span {
   padding: 2px 5px;
@@ -1410,6 +1480,7 @@ svg {
   border-radius: var(--control-radius);
   padding: 6px 12px;
   white-space: nowrap;
+  transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .mini-button:hover {
   background: #eff5e4;
@@ -1644,9 +1715,10 @@ svg {
 .modal::backdrop {
   background: #18332ad9;
   backdrop-filter: blur(5px);
+  animation: fade-in var(--motion-fast) var(--motion-ease) both;
 }
 .modal[open] {
-  animation: enter 0.2s ease both;
+  animation: dialog-enter var(--motion-standard) var(--motion-ease) both;
 }
 .modal-shell {
   padding: 27px 29px;
@@ -1993,6 +2065,7 @@ svg {
   font-size: 12px;
   max-width: min(550px, calc(100vw - 30px));
   line-height: 1.7;
+  animation: fade-in var(--motion-standard) var(--motion-ease) both;
 }
 .toast-error {
   color: #946049;
@@ -2583,7 +2656,7 @@ svg {
   .sidebar {
     width: 235px;
     transform: translateX(-100%);
-    transition: transform 0.22s;
+    transition: transform var(--motion-standard) var(--motion-ease);
     padding: 27px 19px 0;
   }
   .sidebar-open {
@@ -3047,6 +3120,14 @@ svg {
     animation: none !important;
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+  .modal::backdrop {
+    animation: none;
+  }
+  .btn:active:not(:disabled),
+  .route-card:hover,
+  .route-card:hover .route-image-button img {
+    transform: none;
   }
 }
 
