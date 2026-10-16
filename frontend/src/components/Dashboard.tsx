@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import {
   Check,
   Clock3,
@@ -34,7 +35,7 @@ export default function Dashboard({
   const isStaff = user.role === "EMPLOYEE";
   const metrics = [
     {
-      label: isCustomer ? "我的预订" : "订单总数",
+      label: isCustomer ? "我的订单" : "订单总数",
       value: String(data.totalOrders),
       unit: "笔",
       hint: `${data.completedOrders} 笔已完成`,
@@ -245,9 +246,19 @@ export default function Dashboard({
 }
 
 function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
-  const width = 650,
-    height = 184,
-    padX = 25,
+  const plotRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(650);
+  useEffect(() => {
+    const plot = plotRef.current;
+    if (!plot) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setWidth(entry.contentRect.width);
+    });
+    observer.observe(plot);
+    return () => observer.disconnect();
+  }, []);
+  const height = 184,
+    padX = 18,
     padY = 17;
   const max = Math.max(4, ...months.map((month) => month.count));
   const points = months.map((month, index) => ({
@@ -268,9 +279,9 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
           <span key={index}>{value}</span>
         ))}
       </div>
-      <div className="chart-plot">
+      <div className="chart-plot" ref={plotRef}>
         <svg
-          viewBox={`0 0 ${width} ${height}`}
+          viewBox={`0 0 ${width} ${height + 28}`}
           role="img"
           aria-label={months
             .map((month) => `${month.month}：${month.count} 笔订单`)
@@ -324,14 +335,18 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
               >
                 {point.count}
               </text>
+              <text
+                x={point.x}
+                y={height + 20}
+                textAnchor="middle"
+                fill="#5f6368"
+                fontSize="11"
+              >
+                {Number(point.month.slice(5))}月
+              </text>
             </g>
           ))}
         </svg>
-        <div className="chart-months">
-          {months.map((month) => (
-            <span key={month.month}>{Number(month.month.slice(5))}月</span>
-          ))}
-        </div>
       </div>
     </div>
   );

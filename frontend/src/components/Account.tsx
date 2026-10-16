@@ -87,11 +87,7 @@ export default function Account({ user, setUser, notify }: AccountProps) {
 
   return (
     <>
-      <SectionHeading
-        eyebrow="YOUR ACCOUNT"
-        title="个人账户"
-        description="让每一程都能联系上你，也照顾好账户的安全。"
-      />
+      <SectionHeading title="个人账户" description="更新联系方式和登录密码。" />
       <div className="account-layout">
         <aside className="panel account-summary">
           <span className="avatar">{user.displayName.slice(0, 1) || "山"}</span>

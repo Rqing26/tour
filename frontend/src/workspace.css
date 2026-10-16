@@ -253,6 +253,9 @@ input[type="radio"] {
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   height: 64px;
   min-height: 64px;
   padding: 0 32px;

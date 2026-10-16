@@ -55,11 +55,13 @@ export default function App() {
     void initialize();
     const expired = () => {
       setUser(null);
+      setMenuOpen(false);
       notify("登录已过期，请重新登录。", "error");
     };
     const passwordChanged = () => {
       setUser(null);
       setView("dashboard");
+      setMenuOpen(false);
       notify("密码已更新，请重新登录。");
     };
     window.addEventListener("session-expired", expired);
@@ -91,6 +93,7 @@ export default function App() {
       await refreshCsrf();
       setUser(null);
       setView("dashboard");
+      setMenuOpen(false);
     } catch (error) {
       notify(errorMessage(error), "error");
     } finally {
@@ -132,6 +135,7 @@ export default function App() {
           onLogin={(next) => {
             setUser(next);
             setView("dashboard");
+            setMenuOpen(false);
           }}
         />
         {toastElement}
@@ -278,7 +282,13 @@ export default function App() {
         </main>
         <footer className="app-footer">
           <span>山海行 · 旅行社管理系统</span>
-          <a href={`${import.meta.env.BASE_URL}image-credits.html`} target="_blank" rel="noreferrer">图片来源</a>
+          <a
+            href={`${import.meta.env.BASE_URL}image-credits.html`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            图片来源
+          </a>
         </footer>
       </div>
       {toastElement}

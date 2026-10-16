@@ -1,10 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import {
-  Eye,
-  EyeOff,
-  LoaderCircle,
-} from "lucide-react";
+import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { api, errorMessage, refreshCsrf } from "../api";
 import type { User } from "../types";
 import { Brand, Field } from "./UI";
@@ -50,7 +46,9 @@ export default function Auth({ onLogin }: { onLogin: (user: User) => void }) {
   }
   return (
     <main className="auth-layout">
-      <header className="auth-topbar"><Brand /></header>
+      <header className="auth-topbar">
+        <Brand />
+      </header>
       <section className="auth-form-section">
         <div className="auth-form-wrap">
           <h1>{register ? "创建旅行者账户" : "登录"}</h1>
@@ -154,7 +152,9 @@ export default function Auth({ onLogin }: { onLogin: (user: User) => void }) {
           </p>
         </div>
       </section>
-      <footer className="auth-footer">© {new Date().getFullYear()} 山海行</footer>
+      <footer className="auth-footer">
+        © {new Date().getFullYear()} 山海行
+      </footer>
     </main>
   );
 }
