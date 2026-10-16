@@ -23,6 +23,7 @@ import Routes from "./components/Routes";
 import Orders from "./components/Orders";
 import Users from "./components/Users";
 import Account from "./components/Account";
+import Avatar from "./components/Avatar";
 import { Brand, Spinner } from "./components/UI";
 
 export default function App() {
@@ -234,9 +235,7 @@ export default function App() {
             <span>{logoutBusy ? "正在退出…" : "退出登录"}</span>
           </button>
           <div className="sidebar-user">
-            <span className="avatar">
-              {user.displayName?.slice(0, 1) || "山"}
-            </span>
+            <Avatar user={user} />
             <div>
               <strong>{user.displayName}</strong>
               <small>{roleLabels[user.role]}</small>
@@ -277,11 +276,11 @@ export default function App() {
               <Search size={19} />
             </button>
             <button
-              className="avatar avatar-small"
+              className="topbar-avatar"
               onClick={() => navigate("account")}
               aria-label="打开个人账户"
             >
-              {user.displayName?.slice(0, 1) || "山"}
+              <Avatar user={user} className="avatar-small" />
             </button>
           </div>
         </header>

@@ -3,13 +3,13 @@
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  color: #61746b;
+  color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 .pagination-controls .icon-button {
-  border: 1px solid #dfe5dc;
+  border: 1px solid var(--line);
   border-radius: 50%;
   width: 40px;
   height: 40px;
