@@ -1,13 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
-import {
-  ArrowRight,
-  Eye,
-  EyeOff,
-  LoaderCircle,
-  MapPin,
-  ShieldCheck,
-} from "lucide-react";
+import { ArrowRight, Eye, EyeOff, LoaderCircle, MapPin } from "lucide-react";
 import { api, errorMessage, refreshCsrf } from "../api";
 import { photo } from "../assets";
 import type { User } from "../types";
@@ -23,12 +16,6 @@ export default function Auth({ onLogin }: { onLogin: (user: User) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [demoMode, setDemoMode] = useState(false);
-  useEffect(() => {
-    api<{ demoMode: boolean }>("/auth/config")
-      .then((data) => setDemoMode(data.demoMode))
-      .catch(() => {});
-  }, []);
   async function submit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -192,36 +179,6 @@ export default function Auth({ onLogin }: { onLogin: (user: User) => void }) {
               {register ? "返回登录" : "注册旅行者账户"}
             </button>
           </p>
-          {demoMode && !register && (
-            <div className="demo-access">
-              <div className="demo-access-title">
-                <ShieldCheck size={16} />
-                <strong>本地演示体验</strong>
-                <span>示例数据</span>
-              </div>
-              <p>选择身份填入账户，点击登录体验不同工作台。</p>
-              <div className="demo-roles">
-                {[
-                  ["admin", "管理员"],
-                  ["employee", "旅行顾问"],
-                  ["customer", "旅行者"],
-                ].map(([value, label]) => (
-                  <button
-                    key={value}
-                    onClick={() => {
-                      setUsername(value);
-                      setPassword("Travel@2026");
-                      setError("");
-                    }}
-                  >
-                    {label}
-                    <ArrowRight size={13} />
-                  </button>
-                ))}
-              </div>
-              <small>演示密码：Travel@2026</small>
-            </div>
-          )}
         </div>
         <div className="auth-footer">
           <span className="status-dot" /> 每一段旅程，都值得认真对待{" "}

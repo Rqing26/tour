@@ -318,8 +318,12 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
         >
           <defs>
             <linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#42796c" stopOpacity=".16" />
-              <stop offset="100%" stopColor="#42796c" stopOpacity=".015" />
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity=".16" />
+              <stop
+                offset="100%"
+                stopColor="var(--primary)"
+                stopOpacity=".015"
+              />
             </linearGradient>
           </defs>
           {[padY, height / 2, height - padY].map((y) => (
@@ -329,7 +333,7 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
               y1={y}
               x2={width - padX}
               y2={y}
-              stroke="#e9eeea"
+              stroke="var(--line)"
               strokeDasharray="4 6"
             />
           ))}
@@ -337,7 +341,7 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
           <path
             d={line}
             fill="none"
-            stroke="#397969"
+            stroke="var(--primary)"
             strokeWidth="2.7"
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -352,14 +356,14 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
                 cy={point.y}
                 r="5"
                 fill="#fff"
-                stroke="#397969"
+                stroke="var(--primary)"
                 strokeWidth="2.5"
               />
               <text
                 x={point.x}
                 y={Math.max(12, point.y - 13)}
                 textAnchor="middle"
-                fill="#426254"
+                fill="var(--muted)"
                 fontSize="12"
               >
                 {point.count}
