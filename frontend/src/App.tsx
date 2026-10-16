@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
 import {
-  CalendarDays,
-  ChevronRight,
   CircleUserRound,
   Compass,
   LayoutDashboard,
   LogOut,
   Menu,
-  Mountain,
-  PanelLeftClose,
   Search,
   Ticket,
   UsersRound,
@@ -116,7 +112,7 @@ export default function App() {
     return (
       <div className="app-initializing">
         <Brand />
-        <Spinner text="准备你的旅行工作台" />
+        <Spinner text="正在加载" />
       </div>
     );
   if (initError)
@@ -144,21 +140,21 @@ export default function App() {
   const nav = [
     {
       id: "dashboard" as View,
-      label: user.role === "CUSTOMER" ? "我的工作台" : "总览工作台",
+      label: "工作台",
       icon: LayoutDashboard,
     },
     {
       id: "routes" as View,
-      label: user.role === "ADMIN" ? "线路管理" : "探索线路",
+      label: user.role === "ADMIN" ? "线路管理" : "旅行线路",
       icon: Compass,
     },
     {
       id: "orders" as View,
       label:
         user.role === "CUSTOMER"
-          ? "我的预订"
+          ? "我的订单"
           : user.role === "EMPLOYEE"
-            ? "订单服务"
+            ? "订单处理"
             : "全部订单",
       icon: Ticket,
     },
@@ -184,20 +180,15 @@ export default function App() {
       )}
       <aside className={`sidebar ${menuOpen ? "sidebar-open" : ""}`}>
         <div className="sidebar-top">
-          <Brand light />
+          <Brand />
           <button
             className="sidebar-close icon-button"
-            aria-label="收起菜单"
+            aria-label="关闭导航"
             onClick={() => setMenuOpen(false)}
           >
-            <PanelLeftClose size={21} />
+            <X size={21} />
           </button>
         </div>
-        <div className="workspace-label">
-          <span className="status-dot" />
-          {roleLabels[user.role]}工作空间
-        </div>
-        <div className="nav-group-label">工作空间</div>
         <nav aria-label="主导航">
           {nav.map((item) => (
             <button
@@ -208,16 +199,10 @@ export default function App() {
             >
               <item.icon size={20} strokeWidth={1.7} />
               <span>{item.label}</span>
-              {view === item.id && <ChevronRight size={16} />}
             </button>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <Mountain size={28} strokeWidth={1.2} />
-            <p>去看山，去看海。</p>
-            <span>让每一次出发，都有迹可循。</span>
-          </div>
           <button
             className={`nav-item ${view === "account" ? "active" : ""}`}
             onClick={() => navigate("account")}
@@ -241,7 +226,6 @@ export default function App() {
               <strong>{user.displayName}</strong>
               <small>{roleLabels[user.role]}</small>
             </div>
-            <span className="user-online" />
           </div>
         </div>
       </aside>
@@ -255,26 +239,18 @@ export default function App() {
             >
               <Menu size={22} />
             </button>
-            <span>山海行</span>
-            <ChevronRight size={14} />
             <strong>{activeTitle}</strong>
           </div>
           <div className="topbar-right">
-            <span className="today-date">
-              <CalendarDays size={15} />
-              {new Intl.DateTimeFormat("zh-CN", {
-                month: "long",
-                day: "numeric",
-                weekday: "long",
-              }).format(new Date())}
-            </span>
+            <span className="topbar-role">{roleLabels[user.role]}</span>
             <button
               className="topbar-search"
-              title="探索旅行线路"
-              aria-label="探索旅行线路"
+              title="查看旅行线路"
+              aria-label="查看旅行线路"
               onClick={() => navigate("routes")}
             >
               <Search size={19} />
+              <span>查看线路</span>
             </button>
             <button
               className="avatar avatar-small"
@@ -301,17 +277,8 @@ export default function App() {
           )}
         </main>
         <footer className="app-footer">
-          <span>SHANHAI TRAVEL</span>
-          <span>
-            认真对待，每一程。{" "}
-            <a
-              href={`${import.meta.env.BASE_URL}image-credits.html`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              图片来源
-            </a>
-          </span>
+          <span>山海行 · 旅行社管理系统</span>
+          <a href={`${import.meta.env.BASE_URL}image-credits.html`} target="_blank" rel="noreferrer">图片来源</a>
         </footer>
       </div>
       {toastElement}

@@ -19,7 +19,7 @@ export function Brand({ light = false }: { light?: boolean }) {
       </span>
       <span>
         <strong>山海行</strong>
-        <small>SHANHAI TRAVEL</small>
+        <small>旅行社管理系统</small>
       </span>
     </div>
   );
@@ -34,7 +34,7 @@ export function Spinner({ text = "正在加载" }: { text?: string }) {
 }
 export function Empty({
   title = "这里还没有记录",
-  description = "开始一段新旅程吧。",
+  description = "暂无数据。",
   action,
 }: {
   title?: string;
@@ -110,7 +110,6 @@ export function SearchInput({
   );
 }
 export function SectionHeading({
-  eyebrow,
   title,
   description,
   action,
@@ -123,7 +122,6 @@ export function SectionHeading({
   return (
     <div className="section-heading">
       <div>
-        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         {description && <p className="section-description">{description}</p>}
       </div>
