@@ -19,6 +19,10 @@
   --surface: #fff;
   --page: #f6f7f3;
   --radius: 14px;
+  --control-radius: 999px;
+  --motion-fast: 160ms;
+  --motion-standard: 240ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 * {
   box-sizing: border-box;
@@ -88,8 +92,12 @@ textarea:focus {
 }
 button:focus-visible,
 a:focus-visible {
-  outline: 3px solid #a8c8b2;
-  outline-offset: 4px;
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+.sidebar button:focus-visible,
+.journey-feature button:focus-visible {
+  outline-color: #c8da9d;
 }
 button,
 select {
@@ -142,9 +150,9 @@ svg {
 }
 .btn {
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--control-radius);
   min-height: 42px;
-  padding: 10px 17px;
+  padding: 10px 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -152,20 +160,21 @@ svg {
   font-size: 13px;
   font-weight: 500;
   transition:
-    background 0.15s,
-    transform 0.15s;
+    background-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
   white-space: nowrap;
 }
 .btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.98);
 }
 .btn-primary {
   background: var(--primary);
   color: white;
-  box-shadow: 0 3px 7px #1b4e3510;
+  box-shadow: 0 1px 2px #1b4e351a;
 }
 .btn-primary:hover:not(:disabled) {
-  background: #214f42;
+  box-shadow: 0 2px 5px #1b4e3526;
 }
 .btn-secondary {
   background: white;
@@ -182,21 +191,79 @@ svg {
 .btn-danger:hover:not(:disabled) {
   background: #8d4037;
 }
+/* Material state layers keep hover and press feedback within each control. */
+:where(.btn, .icon-button, .nav-item, .route-book-button, .mini-button) {
+  position: relative;
+  isolation: isolate;
+}
+:where(
+  .btn,
+  .icon-button,
+  .nav-item,
+  .route-book-button,
+  .mini-button
+)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast) var(--motion-ease);
+}
+@media (hover: hover) {
+  :where(
+      .btn,
+      .icon-button,
+      .nav-item,
+      .route-book-button,
+      .mini-button
+    ):hover:not(:disabled)::before {
+    opacity: 0.08;
+  }
+}
+:where(
+    .btn,
+    .icon-button,
+    .nav-item,
+    .route-book-button,
+    .mini-button
+  ):focus-visible::before {
+  opacity: 0.1;
+}
+:where(
+    .btn,
+    .icon-button,
+    .nav-item,
+    .route-book-button,
+    .mini-button
+  ):active:not(:disabled)::before {
+  opacity: 0.14;
+}
+.btn:disabled {
+  box-shadow: none;
+}
 .icon-button {
   border: 0;
   padding: 8px;
+  min-width: 40px;
+  min-height: 40px;
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  border-radius: 7px;
+  border-radius: 50%;
   background: transparent;
   color: #617167;
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
 }
-.icon-button:hover {
+.icon-button:hover:not(:disabled) {
   background: #eff4ed;
   color: var(--primary);
 }
-.icon-button.danger:hover {
+.icon-button.danger:hover:not(:disabled) {
   color: #a8493f;
   background: #fcf0ed;
 }
@@ -489,8 +556,10 @@ svg {
   border: 0;
   display: grid;
   place-items: center;
-  padding: 3px 17px 3px 0;
-  border-right: 1px solid #e5eae2;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   color: #627066;
 }
 .avatar-small {
@@ -802,7 +871,7 @@ svg {
   color: #f7f9ef;
   border: 1px solid #ffffff44;
   padding: 9px 13px;
-  border-radius: 6px;
+  border-radius: var(--control-radius);
   font-size: 10px;
   display: inline-flex;
   align-items: center;
@@ -1006,6 +1075,11 @@ svg {
   background: none;
   color: #617259;
   padding: 0;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
 }
 .route-filter-bar {
   display: flex;
@@ -1234,7 +1308,7 @@ svg {
   align-items: center;
   color: #56763b;
   padding: 8px 9px;
-  border-radius: 6px;
+  border-radius: var(--control-radius);
   font-size: 12px;
 }
 .route-book-button:hover {
@@ -1333,8 +1407,8 @@ svg {
   color: #557637;
   font-size: 11px;
   background: #f8fbf2;
-  border-radius: 5px;
-  padding: 6px 8px;
+  border-radius: var(--control-radius);
+  padding: 6px 12px;
   white-space: nowrap;
 }
 .mini-button:hover {
@@ -1932,6 +2006,11 @@ svg {
   padding: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
 }
 .account-layout {
   display: grid;
@@ -2107,13 +2186,43 @@ svg {
   background: none;
   border: 0;
   position: absolute;
-  right: 10px;
+  right: 5px;
   top: 50%;
   transform: translateY(-50%);
   color: #64724f;
   display: flex;
   align-items: center;
   padding: 3px;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+:is(
+  .topbar-search,
+  .password-input button,
+  .search-input button,
+  .toast button
+) {
+  transition:
+    background-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease);
+}
+:is(
+    .topbar-search,
+    .password-input button,
+    .search-input button,
+    .toast button
+  ):hover:not(:disabled) {
+  background-color: #2b635314;
+}
+:is(
+    .topbar-search,
+    .password-input button,
+    .search-input button,
+    .toast button
+  ):active:not(:disabled) {
+  background-color: #2b635326;
 }
 .auth-submit {
   width: 100%;
