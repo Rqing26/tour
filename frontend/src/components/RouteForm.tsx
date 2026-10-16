@@ -67,7 +67,7 @@ export default function RouteForm({
   return (
     <Modal
       title={route ? "编辑旅行线路" : "创建一条新线路"}
-      subtitle="把目的地的美好，写进下一段旅程。"
+      subtitle="填写线路信息和上架设置。"
       wide
       onClose={() => {
         if (!busy) onClose();

@@ -9,7 +9,6 @@ import {
   Plus,
   SlidersHorizontal,
   Trash2,
-  UsersRound,
 } from "lucide-react";
 import { api, errorMessage } from "../api";
 import { dateLabel, money, photo } from "../assets";
@@ -82,12 +81,11 @@ export default function Routes({
   return (
     <>
       <SectionHeading
-        eyebrow={isAdmin ? "ROUTE MANAGEMENT" : "EXPLORE & DISCOVER"}
-        title={isAdmin ? "每一条线路，都通向期待" : "下一站，去哪里？"}
+        title={isAdmin ? "线路管理" : "旅行线路"}
         description={
           isAdmin
-            ? "维护旅行线路、出发安排与席位，让每一程都有好风景。"
-            : "从城市的烟火，到山野的辽阔，找到属于你的那段旅程。"
+            ? "维护线路的出发日期、价格、名额和上架状态。"
+            : "按目的地筛选并查看出发安排。"
         }
         action={
           isAdmin ? (
@@ -98,12 +96,7 @@ export default function Routes({
               <Plus size={17} />
               新增线路
             </button>
-          ) : (
-            <span className="quiet-label">
-              <CompassMark />
-              为热爱出发
-            </span>
-          )
+          ) : undefined
         }
       />
       <section className="route-filter-bar">
@@ -146,14 +139,13 @@ export default function Routes({
       <div className="results-heading">
         <span>
           {loading ? (
-            "正在发现好风景…"
+            "正在加载线路…"
           ) : (
             <>
               共 <strong>{filtered.length}</strong> 条旅行线路
             </>
           )}
         </span>
-        <span>山海之间，总有心之所向</span>
       </div>
       {loading ? (
         <Spinner />
@@ -297,7 +289,7 @@ export default function Routes({
           onClose={() => setSelected(null)}
           onBooked={() => {
             setSelected(null);
-            notify("预订成功，旅行顾问将为你跟进行程。");
+            notify("预订成功，请在我的订单中查看进度。");
             navigate("orders");
           }}
           onEdit={
@@ -346,7 +338,4 @@ export default function Routes({
       )}
     </>
   );
-}
-function CompassMark() {
-  return <UsersRound size={16} />;
 }
