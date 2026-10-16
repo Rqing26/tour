@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, LoaderCircle, MapPin } from "lucide-react";
 import { api, errorMessage, refreshCsrf } from "../api";
+import { photo } from "../assets";
 import type { User } from "../types";
 import { Brand, Field } from "./UI";
 
@@ -29,7 +30,7 @@ export default function Auth({ onLogin }: { onLogin: (user: User) => void }) {
           phone,
         });
         setRegister(false);
-        setNotice("注册成功，请登录。");
+        setNotice("注册成功。现在可以登录，开启你的旅程。");
       } else {
         const user = await api<User>("/auth/login", "POST", {
           username,
@@ -46,16 +47,43 @@ export default function Auth({ onLogin }: { onLogin: (user: User) => void }) {
   }
   return (
     <main className="auth-layout">
-      <header className="auth-topbar">
-        <Brand />
-      </header>
+      <section
+        className="auth-story"
+        style={{ backgroundImage: `url(${photo("guilin")})` }}
+      >
+        <Brand light />
+        <div className="auth-story-copy">
+          <p className="eyebrow">GO FURTHER. FEEL MORE.</p>
+          <h1>
+            心有山海，
+            <br />
+            一路同行。
+          </h1>
+          <p>
+            把繁杂交给我们，
+            <br />
+            把时间留给沿途的风景。
+          </p>
+          <div className="auth-location">
+            <MapPin size={16} />
+            <span>在山水之间，发现下一段旅程</span>
+          </div>
+        </div>
+        <span className="auth-copyright">
+          © {new Date().getFullYear()} 山海行 · SHANHAI TRAVEL
+        </span>
+      </section>
       <section className="auth-form-section">
+        <div className="auth-mobile-brand">
+          <Brand />
+        </div>
         <div className="auth-form-wrap">
-          <h1>{register ? "创建旅行者账户" : "登录"}</h1>
+          <p className="eyebrow">YOUR JOURNEY STARTS HERE</p>
+          <h2>{register ? "遇见下一段精彩" : "欢迎回来"}</h2>
           <p className="auth-subtitle">
             {register
-              ? "填写基本信息以查看和预订线路。"
-              : "使用山海行账户继续。"}
+              ? "创建旅行者账户，让期待变成出发。"
+              : "登录山海行，继续你的旅行与工作。"}
           </p>
           <form className="form-stack" onSubmit={submit}>
             <Field label="用户名">
@@ -136,10 +164,11 @@ export default function Auth({ onLogin }: { onLogin: (user: User) => void }) {
             <button className="btn btn-primary auth-submit" disabled={busy}>
               {busy ? <LoaderCircle className="spin" size={18} /> : null}
               {register ? "创建账户" : "登录"}
+              <ArrowRight size={18} />
             </button>
           </form>
           <p className="auth-switch">
-            {register ? "已有账户？" : "没有账户？"}
+            {register ? "已经有账户？" : "还没有账户？"}
             <button
               onClick={() => {
                 setRegister(!register);
@@ -147,14 +176,21 @@ export default function Auth({ onLogin }: { onLogin: (user: User) => void }) {
                 setNotice("");
               }}
             >
-              {register ? "返回登录" : "注册"}
+              {register ? "返回登录" : "注册旅行者账户"}
             </button>
           </p>
         </div>
+        <div className="auth-footer">
+          <span className="status-dot" /> 每一段旅程，都值得认真对待{" "}
+          <a
+            href={`${import.meta.env.BASE_URL}image-credits.html`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            图片来源
+          </a>
+        </div>
       </section>
-      <footer className="auth-footer">
-        © {new Date().getFullYear()} 山海行
-      </footer>
     </main>
   );
 }

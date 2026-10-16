@@ -87,7 +87,7 @@ export default function BookingDialog({
       </div>
       {user.role === "CUSTOMER" ? (
         <form className="form-stack booking-form" onSubmit={book}>
-          <h3>预订信息</h3>
+          <h3>确认你的出行安排</h3>
           <div className="form-grid">
             <Field label="联系人">
               <input
@@ -140,7 +140,7 @@ export default function BookingDialog({
             <strong>¥ {money(route.price * travelerCount)}</strong>
           </div>
           <p className="form-note">
-            提交后将由旅行顾问跟进。订单完成前，可以在「我的订单」中取消。
+            提交后将由旅行顾问跟进。订单完成前，可以在「我的预订」中取消。
           </p>
           {unavailable && (
             <p className="form-error">
@@ -159,7 +159,7 @@ export default function BookingDialog({
               disabled={busy}
               onClick={onClose}
             >
-              取消
+              再看看
             </button>
             <button className="btn btn-primary" disabled={busy || unavailable}>
               {busy ? "正在提交…" : "确认预订"}
@@ -174,7 +174,7 @@ export default function BookingDialog({
             <small>/ 人</small>
           </div>
           <button className="btn btn-primary" onClick={onEdit || onClose}>
-            {onEdit ? "编辑线路" : "关闭"}
+            {onEdit ? "编辑线路" : "了解了"}
           </button>
         </div>
       )}

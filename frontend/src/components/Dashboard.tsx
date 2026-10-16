@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
 import {
+  ArrowDownRight,
+  ArrowRight,
+  ArrowUpRight,
   Check,
   Clock3,
   MapPin,
@@ -9,7 +11,7 @@ import {
 } from "lucide-react";
 import type { DashboardData, User, View } from "../types";
 import { useResource } from "../useResource";
-import { dateLabel, money } from "../assets";
+import { dateLabel, money, photo } from "../assets";
 import {
   Empty,
   ErrorState,
@@ -33,9 +35,11 @@ export default function Dashboard({
     return <ErrorState message={error || "加载失败"} retry={refresh} />;
   const isCustomer = user.role === "CUSTOMER";
   const isStaff = user.role === "EMPLOYEE";
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "上午好" : hour < 18 ? "下午好" : "晚上好";
   const metrics = [
     {
-      label: isCustomer ? "我的订单" : "订单总数",
+      label: isCustomer ? "我的预订" : "订单总数",
       value: String(data.totalOrders),
       unit: "笔",
       hint: `${data.completedOrders} 笔已完成`,
@@ -46,7 +50,7 @@ export default function Dashboard({
       label: "待接订单",
       value: String(data.pendingOrders),
       unit: "笔",
-      hint: isStaff ? "可在订单处理页接单" : "等待旅行顾问接单",
+      hint: isStaff ? "挑选订单，开始新的服务" : "等待旅行顾问接单",
       icon: Clock3,
       color: "amber",
     },
@@ -69,9 +73,9 @@ export default function Dashboard({
       ),
       unit: isCustomer || isStaff ? "笔" : "条",
       hint: isCustomer
-        ? "由旅行顾问跟进"
+        ? "旅行顾问正在跟进行程"
         : isStaff
-          ? "已完成的订单"
+          ? "每一次服务，积累一份信任"
           : `${data.customerCount} 位旅行者 · ${data.employeeCount} 位顾问`,
       icon: isStaff ? Check : UsersRound,
       color: "purple",
@@ -80,25 +84,29 @@ export default function Dashboard({
   return (
     <>
       <SectionHeading
-        title="工作台"
+        eyebrow="OVERVIEW"
+        title={`${greeting}，${user.displayName}`}
         description={
           isCustomer
-            ? `${user.displayName}，这里是你的预订概况。`
-            : `${user.displayName}，查看订单和线路概况。`
+            ? "远方的风景，正在等待你的下一次出发。"
+            : "新的一天，从井然有序的旅程开始。"
         }
         action={
           <button
             className="btn btn-primary"
             onClick={() => navigate(isCustomer ? "routes" : "orders")}
           >
-            <Ticket size={17} />
-            {isCustomer ? "查看线路" : "查看订单"}
+            {isCustomer ? "探索下一段旅程" : "查看订单"}
+            <ArrowUpRight size={17} />
           </button>
         }
       />
       <section className="metrics-grid" aria-label="业务概况">
-        {metrics.map((metric) => (
-          <article className="metric-card" key={metric.label}>
+        {metrics.map((metric, index) => (
+          <article
+            className={`metric-card ${index === 0 ? "metric-featured" : ""}`}
+            key={metric.label}
+          >
             <div className="metric-top">
               <span>{metric.label}</span>
               <span className={`metric-icon metric-icon-${metric.color}`}>
@@ -109,7 +117,14 @@ export default function Dashboard({
               {metric.value}
               <small>{metric.unit}</small>
             </div>
-            <p>{metric.hint}</p>
+            <p>
+              {index === 0 ? (
+                <span className="metric-hint-check">
+                  <Check size={13} />
+                </span>
+              ) : null}
+              {metric.hint}
+            </p>
           </article>
         ))}
       </section>
@@ -117,7 +132,7 @@ export default function Dashboard({
         <section className="panel trend-panel">
           <div className="panel-heading">
             <div>
-              <h2>订单趋势</h2>
+              <h2>{isCustomer ? "我的出行足迹" : "订单趋势"}</h2>
               <p>近 6 个月的订单数量</p>
             </div>
             <span className="legend">
@@ -133,13 +148,36 @@ export default function Dashboard({
             <span className="muted">按下单时间统计</span>
           </div>
         </section>
+        <section
+          className="journey-feature"
+          style={{ backgroundImage: `url(${photo("yunnan")})` }}
+        >
+          <div className="journey-feature-top">
+            <span className="small-label">A LITTLE INSPIRATION</span>
+            <ArrowUpRight size={22} />
+          </div>
+          <div className="journey-feature-bottom">
+            <p>
+              <MapPin size={14} /> 向往的远方
+            </p>
+            <h2>
+              下一站，
+              <br />
+              遇见山海。
+            </h2>
+            <button onClick={() => navigate("routes")}>
+              发现旅行线路
+              <ArrowRight size={17} />
+            </button>
+          </div>
+        </section>
       </div>
       <div className="dashboard-bottom">
         <section className="panel recent-panel">
           <div className="panel-heading">
             <div>
               <h2>{isCustomer ? "最近的预订" : "最新订单"}</h2>
-              <p>最近更新的订单</p>
+              <p>每一段旅程的最新动态</p>
             </div>
             <TextLink onClick={() => navigate("orders")}>查看全部</TextLink>
           </div>
@@ -181,7 +219,7 @@ export default function Dashboard({
               title="还没有订单"
               description={
                 isCustomer
-                  ? "可以前往线路页查看可预订的行程。"
+                  ? "找一条心仪的线路，开始记录你的旅程。"
                   : "新订单会显示在这里。"
               }
               action={
@@ -190,7 +228,7 @@ export default function Dashboard({
                     className="btn btn-secondary"
                     onClick={() => navigate("routes")}
                   >
-                    查看线路
+                    去探索线路
                   </button>
                 ) : undefined
               }
@@ -200,9 +238,10 @@ export default function Dashboard({
         <section className="panel popular-panel">
           <div className="panel-heading">
             <div>
-              <h2>热门线路</h2>
+              <h2>{isCustomer ? "我的心选目的地" : "热门目的地"}</h2>
               <p>按订单数量排序</p>
             </div>
+            <ArrowDownRight size={19} />
           </div>
           {data.popularRoutes.length ? (
             <div className="popular-list">
@@ -231,8 +270,8 @@ export default function Dashboard({
             </div>
           ) : (
             <Empty
-              title="暂无热门线路"
-              description="有订单后会显示线路排名。"
+              title="期待第一段旅程"
+              description="产生订单后，即可在此查看热门目的地。"
             />
           )}
           <div className="popular-footer">
@@ -246,19 +285,9 @@ export default function Dashboard({
 }
 
 function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
-  const plotRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(650);
-  useEffect(() => {
-    const plot = plotRef.current;
-    if (!plot) return;
-    const observer = new ResizeObserver(([entry]) => {
-      setWidth(entry.contentRect.width);
-    });
-    observer.observe(plot);
-    return () => observer.disconnect();
-  }, []);
-  const height = 184,
-    padX = 18,
+  const width = 650,
+    height = 184,
+    padX = 25,
     padY = 17;
   const max = Math.max(4, ...months.map((month) => month.count));
   const points = months.map((month, index) => ({
@@ -279,9 +308,9 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
           <span key={index}>{value}</span>
         ))}
       </div>
-      <div className="chart-plot" ref={plotRef}>
+      <div className="chart-plot">
         <svg
-          viewBox={`0 0 ${width} ${height + 28}`}
+          viewBox={`0 0 ${width} ${height}`}
           role="img"
           aria-label={months
             .map((month) => `${month.month}：${month.count} 笔订单`)
@@ -289,8 +318,8 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
         >
           <defs>
             <linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#1a73e8" stopOpacity=".15" />
-              <stop offset="100%" stopColor="#1a73e8" stopOpacity=".01" />
+              <stop offset="0%" stopColor="#42796c" stopOpacity=".16" />
+              <stop offset="100%" stopColor="#42796c" stopOpacity=".015" />
             </linearGradient>
           </defs>
           {[padY, height / 2, height - padY].map((y) => (
@@ -300,7 +329,7 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
               y1={y}
               x2={width - padX}
               y2={y}
-              stroke="#e8eaed"
+              stroke="#e9eeea"
               strokeDasharray="4 6"
             />
           ))}
@@ -308,7 +337,7 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
           <path
             d={line}
             fill="none"
-            stroke="#1a73e8"
+            stroke="#397969"
             strokeWidth="2.7"
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -323,30 +352,26 @@ function TrendChart({ months }: { months: DashboardData["monthlyOrders"] }) {
                 cy={point.y}
                 r="5"
                 fill="#fff"
-                stroke="#1a73e8"
+                stroke="#397969"
                 strokeWidth="2.5"
               />
               <text
                 x={point.x}
                 y={Math.max(12, point.y - 13)}
                 textAnchor="middle"
-                fill="#3c4043"
+                fill="#426254"
                 fontSize="12"
               >
                 {point.count}
               </text>
-              <text
-                x={point.x}
-                y={height + 20}
-                textAnchor="middle"
-                fill="#5f6368"
-                fontSize="11"
-              >
-                {Number(point.month.slice(5))}月
-              </text>
             </g>
           ))}
         </svg>
+        <div className="chart-months">
+          {months.map((month) => (
+            <span key={month.month}>{Number(month.month.slice(5))}月</span>
+          ))}
+        </div>
       </div>
     </div>
   );

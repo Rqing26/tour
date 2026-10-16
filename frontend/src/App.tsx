@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import {
+  CalendarDays,
+  ChevronRight,
   CircleUserRound,
   Compass,
   LayoutDashboard,
   LogOut,
   Menu,
+  Mountain,
+  PanelLeftClose,
   Search,
   Ticket,
   UsersRound,
@@ -55,13 +59,11 @@ export default function App() {
     void initialize();
     const expired = () => {
       setUser(null);
-      setMenuOpen(false);
       notify("登录已过期，请重新登录。", "error");
     };
     const passwordChanged = () => {
       setUser(null);
       setView("dashboard");
-      setMenuOpen(false);
       notify("密码已更新，请重新登录。");
     };
     window.addEventListener("session-expired", expired);
@@ -93,7 +95,6 @@ export default function App() {
       await refreshCsrf();
       setUser(null);
       setView("dashboard");
-      setMenuOpen(false);
     } catch (error) {
       notify(errorMessage(error), "error");
     } finally {
@@ -115,7 +116,7 @@ export default function App() {
     return (
       <div className="app-initializing">
         <Brand />
-        <Spinner text="正在加载" />
+        <Spinner text="准备你的旅行工作台" />
       </div>
     );
   if (initError)
@@ -135,7 +136,6 @@ export default function App() {
           onLogin={(next) => {
             setUser(next);
             setView("dashboard");
-            setMenuOpen(false);
           }}
         />
         {toastElement}
@@ -144,21 +144,21 @@ export default function App() {
   const nav = [
     {
       id: "dashboard" as View,
-      label: "工作台",
+      label: user.role === "CUSTOMER" ? "我的工作台" : "总览工作台",
       icon: LayoutDashboard,
     },
     {
       id: "routes" as View,
-      label: user.role === "ADMIN" ? "线路管理" : "旅行线路",
+      label: user.role === "ADMIN" ? "线路管理" : "探索线路",
       icon: Compass,
     },
     {
       id: "orders" as View,
       label:
         user.role === "CUSTOMER"
-          ? "我的订单"
+          ? "我的预订"
           : user.role === "EMPLOYEE"
-            ? "订单处理"
+            ? "订单服务"
             : "全部订单",
       icon: Ticket,
     },
@@ -184,15 +184,20 @@ export default function App() {
       )}
       <aside className={`sidebar ${menuOpen ? "sidebar-open" : ""}`}>
         <div className="sidebar-top">
-          <Brand />
+          <Brand light />
           <button
             className="sidebar-close icon-button"
-            aria-label="关闭导航"
+            aria-label="收起菜单"
             onClick={() => setMenuOpen(false)}
           >
-            <X size={21} />
+            <PanelLeftClose size={21} />
           </button>
         </div>
+        <div className="workspace-label">
+          <span className="status-dot" />
+          {roleLabels[user.role]}工作空间
+        </div>
+        <div className="nav-group-label">工作空间</div>
         <nav aria-label="主导航">
           {nav.map((item) => (
             <button
@@ -203,10 +208,16 @@ export default function App() {
             >
               <item.icon size={20} strokeWidth={1.7} />
               <span>{item.label}</span>
+              {view === item.id && <ChevronRight size={16} />}
             </button>
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <div className="sidebar-note">
+            <Mountain size={28} strokeWidth={1.2} />
+            <p>去看山，去看海。</p>
+            <span>让每一次出发，都有迹可循。</span>
+          </div>
           <button
             className={`nav-item ${view === "account" ? "active" : ""}`}
             onClick={() => navigate("account")}
@@ -230,6 +241,7 @@ export default function App() {
               <strong>{user.displayName}</strong>
               <small>{roleLabels[user.role]}</small>
             </div>
+            <span className="user-online" />
           </div>
         </div>
       </aside>
@@ -243,18 +255,26 @@ export default function App() {
             >
               <Menu size={22} />
             </button>
+            <span>山海行</span>
+            <ChevronRight size={14} />
             <strong>{activeTitle}</strong>
           </div>
           <div className="topbar-right">
-            <span className="topbar-role">{roleLabels[user.role]}</span>
+            <span className="today-date">
+              <CalendarDays size={15} />
+              {new Intl.DateTimeFormat("zh-CN", {
+                month: "long",
+                day: "numeric",
+                weekday: "long",
+              }).format(new Date())}
+            </span>
             <button
               className="topbar-search"
-              title="查看旅行线路"
-              aria-label="查看旅行线路"
+              title="探索旅行线路"
+              aria-label="探索旅行线路"
               onClick={() => navigate("routes")}
             >
               <Search size={19} />
-              <span>查看线路</span>
             </button>
             <button
               className="avatar avatar-small"
@@ -281,14 +301,17 @@ export default function App() {
           )}
         </main>
         <footer className="app-footer">
-          <span>山海行 · 旅行社管理系统</span>
-          <a
-            href={`${import.meta.env.BASE_URL}image-credits.html`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            图片来源
-          </a>
+          <span>SHANHAI TRAVEL</span>
+          <span>
+            认真对待，每一程。{" "}
+            <a
+              href={`${import.meta.env.BASE_URL}image-credits.html`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              图片来源
+            </a>
+          </span>
         </footer>
       </div>
       {toastElement}

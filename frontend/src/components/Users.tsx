@@ -65,8 +65,9 @@ export default function Users({
   return (
     <>
       <SectionHeading
-        title="用户管理"
-        description="管理账户角色、联系方式和启用状态。"
+        eyebrow="PEOPLE & TEAM"
+        title="同行的人，同样重要"
+        description="管理旅行者与服务团队，让每个账户各司其职。"
         action={
           <button className="btn btn-primary" onClick={() => setEditing("new")}>
             <Plus size={17} />
@@ -307,7 +308,7 @@ function UserForm({
   }
   return (
     <Modal
-      title={existing ? "编辑用户信息" : "新增用户"}
+      title={existing ? "编辑用户信息" : "添加一位同行者"}
       subtitle={
         existing ? "更新联系方式与账户状态。" : "为旅行顾问或旅行者创建账户。"
       }

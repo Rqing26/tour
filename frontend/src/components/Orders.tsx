@@ -108,13 +108,20 @@ export default function Orders({
   return (
     <>
       <SectionHeading
-        title={isCustomer ? "我的订单" : isEmployee ? "订单处理" : "全部订单"}
+        eyebrow={isCustomer ? "MY JOURNEYS" : "ORDER CENTER"}
+        title={
+          isCustomer
+            ? "每一段旅程，都在这里"
+            : isEmployee
+              ? "用心服务，每一段旅程"
+              : "让每笔订单，井然有序"
+        }
         description={
           isCustomer
-            ? "查看预订进度和出发安排。"
+            ? "查看预订进展、出发安排，与旅行顾问保持连接。"
             : isEmployee
-              ? "接单并更新服务状态。"
-              : "查看和筛选所有订单。"
+              ? "从接单到旅程完成，在这里跟进你的服务。"
+              : "掌握所有订单的进展，关注每一位旅行者的出行。"
         }
         action={
           <button
@@ -171,7 +178,7 @@ export default function Orders({
               search || status
                 ? "调整筛选条件，看看其他订单。"
                 : isCustomer
-                  ? "可以在旅行线路页提交预订。"
+                  ? "预订一条心仪的线路，开启你的下一段旅程。"
                   : "新订单将在这里显示。"
             }
           />
@@ -277,6 +284,7 @@ export default function Orders({
         >
           <div className="order-detail-title">
             <div>
+              <span className="eyebrow">YOUR JOURNEY</span>
               <h3>{selected.routeName}</h3>
               <p>
                 <MapPin size={14} />
