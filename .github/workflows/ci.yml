@@ -25,7 +25,7 @@ jobs:
           cache: maven
 
       - name: 编译并运行测试
-        run: mvn -B -ntp verify
+        run: ./mvnw -B -ntp verify
 
       - name: 归档测试报告
         if: always()
