@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageCircle,
   Mountain,
   PanelLeftClose,
   Search,
@@ -24,6 +25,8 @@ import Orders from "./components/Orders";
 import Users from "./components/Users";
 import Account from "./components/Account";
 import Avatar from "./components/Avatar";
+import Chat from "./components/Chat";
+import { useChat } from "./useChat";
 import { Brand, Spinner } from "./components/UI";
 
 export default function App() {
@@ -37,6 +40,7 @@ export default function App() {
     kind: "success" | "error";
   } | null>(null);
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const chat = useChat(user);
   const notify = (message: string, kind: "success" | "error" = "success") =>
     setToast({ message, kind });
   const navigate = (next: View) => {
@@ -86,6 +90,7 @@ export default function App() {
       orders: "订单管理",
       users: "用户管理",
       account: "个人账户",
+      chat: "在线咨询",
     };
     document.title = `${user ? titles[view] : "登录"} · 山海行`;
   }, [view, user]);
@@ -166,6 +171,9 @@ export default function App() {
     ...(user.role === "ADMIN"
       ? [{ id: "users" as View, label: "用户管理", icon: UsersRound }]
       : []),
+    ...(user.role !== "ADMIN"
+      ? [{ id: "chat" as View, label: "在线咨询", icon: MessageCircle }]
+      : []),
   ];
   const activeTitle =
     view === "account"
@@ -209,6 +217,14 @@ export default function App() {
             >
               <item.icon size={20} strokeWidth={1.7} />
               <span>{item.label}</span>
+              {item.id === "chat" && chat.unread > 0 && (
+                <b
+                  className="chat-nav-badge"
+                  aria-label={`${chat.unread} 条未读消息`}
+                >
+                  {chat.unread > 99 ? "99+" : chat.unread}
+                </b>
+              )}
               {view === item.id && <ChevronRight size={16} />}
             </button>
           ))}
@@ -297,6 +313,9 @@ export default function App() {
           )}{" "}
           {view === "account" && (
             <Account user={user} setUser={setUser} notify={notify} />
+          )}
+          {view === "chat" && user.role !== "ADMIN" && (
+            <Chat user={user} chat={chat} />
           )}
         </main>
         <footer className="app-footer">

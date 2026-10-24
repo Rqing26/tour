@@ -9,6 +9,7 @@ import org.springframework.http.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
 import java.util.Map;
+import java.io.IOException;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -22,6 +23,9 @@ public class ChatController {
     return ResponseEntity.ok().header("X-Accel-Buffering", "no").cacheControl(CacheControl.noStore())
         .body(events.subscribe(chats.actor(), session));
   }
+  // A browser closing a streaming response needs no JSON error written to the closed socket.
+  @ExceptionHandler({IOException.class, org.springframework.web.context.request.async.AsyncRequestTimeoutException.class})
+  public void disconnected() {}
   @GetMapping("/contacts")
   public List<ChatApi.Contact> contacts() { return chats.contacts(); }
   @GetMapping("/conversations")

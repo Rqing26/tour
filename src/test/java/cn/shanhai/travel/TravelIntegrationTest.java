@@ -33,6 +33,8 @@ class TravelIntegrationTest {
   @Autowired RouteRepository routes;
   @Autowired UserRepository users;
   @Autowired OrderRepository orders;
+  @Autowired cn.shanhai.travel.service.ChatEvents chatEvents;
+  @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
 
   record Client(MockHttpSession session, String csrf) {}
 
@@ -459,7 +461,20 @@ class TravelIntegrationTest {
     assertTrue(second.getResponse().getContentAsString().contains("event:chat"));
     assertFalse(third.getResponse().getContentAsString().contains("event:chat"));
     assertFalse(second.getResponse().getContentAsString().contains("实时咨询"));
-    for (var stream : List.of(first, second, third)) stream.getRequest().getAsyncContext().complete();
+    String committed = second.getResponse().getContentAsString();
+    new org.springframework.transaction.support.TransactionTemplate(transactions).executeWithoutResult(tx -> {
+      try {
+        ok(customer, "POST", "/api/chat/conversations/" + thread + "/messages", Map.of("content", "回滚消息", "clientId", UUID.randomUUID().toString()));
+        tx.setRollbackOnly();
+      } catch (Exception error) { throw new RuntimeException(error); }
+    });
+    assertEquals(committed, second.getResponse().getContentAsString());
+    var history = data(mvc.perform(get("/api/chat/conversations/" + thread + "/messages").session(employee.session())).andReturn());
+    assertEquals(1, history.size());
+    ok(customer, "POST", "/api/auth/logout", Map.of());
+    chatEvents.heartbeat();
+    assertNull(first.getAsyncResult(1000));
+    for (var stream : List.of(second, third)) stream.getRequest().getAsyncContext().complete();
   }
 
   @Test

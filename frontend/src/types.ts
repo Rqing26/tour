@@ -66,5 +66,28 @@ export interface DashboardData {
   }[];
   monthlyOrders: { month: string; count: number }[];
 }
-export type View = "dashboard" | "routes" | "orders" | "users" | "account";
+export type View =
+  "dashboard" | "routes" | "orders" | "users" | "account" | "chat";
+export interface ChatContact {
+  id: number;
+  displayName: string;
+  role: Role;
+  enabled: boolean;
+}
+export interface Conversation {
+  id: number;
+  peer: ChatContact;
+  lastMessage: string | null;
+  updatedAt: string;
+  unreadCount: number;
+  peerReadId: number;
+}
+export interface ChatMessage {
+  id: number;
+  conversationId: number;
+  senderId: number;
+  content: string;
+  clientId: string;
+  createdAt: string;
+}
 export type Notify = (message: string, kind?: "success" | "error") => void;
