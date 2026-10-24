@@ -18,3 +18,10 @@ data/
 .idea/
 *.iml
 out/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Agent workspace
+.workbuddy/
