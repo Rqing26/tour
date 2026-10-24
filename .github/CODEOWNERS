@@ -1,0 +1,23 @@
+# 代码归属，PR 自动指派评审人
+# 把下面的占位符换成真实 GitHub 用户名
+
+# 后端数据与事务层
+/src/main/java/cn/shanhai/travel/repository/  @Rqing26
+/src/main/java/cn/shanhai/travel/service/     @Rqing26
+/src/main/resources/db/migration/             @Rqing26
+
+# 接口与安全
+/src/main/java/cn/shanhai/travel/controller/  @Rqing26
+/src/main/java/cn/shanhai/travel/config/      @Rqing26
+/src/main/java/cn/shanhai/travel/dto/         @Rqing26
+
+# 前端
+/frontend/                                    @Rqing26
+
+# 测试
+/src/test/                                    @Rqing26
+/frontend/tests/                              @Rqing26
+
+# 工程化与文档
+/.github/                                     @Rqing26
+/docs/                                        @Rqing26
