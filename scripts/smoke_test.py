@@ -1,7 +1,7 @@
 """Black-box validation against an isolated demo instance, never the user's data."""
-import json, urllib.request, urllib.error, http.cookiejar
+import json, os, urllib.request, urllib.error, http.cookiejar
 from datetime import date,timedelta
-BASE='http://127.0.0.1:18080/travel/api'
+BASE=os.environ.get('TRAVEL_SMOKE_BASE','http://127.0.0.1:18080/travel/api')
 checks=[]
 class Client:
  def __init__(self):
