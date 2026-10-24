@@ -441,6 +441,28 @@ class TravelIntegrationTest {
   }
 
   @Test
+  void chatStreamsPushChangesOnlyToParticipants() throws Exception {
+    var customer = login("customer");
+    var employee = login("employee");
+    var admin = login("admin");
+    newUser(admin, "stream_outsider", "CUSTOMER");
+    var outsider = login("stream_outsider");
+    mvc.perform(get("/api/chat/events")).andExpect(status().isUnauthorized());
+    mvc.perform(get("/api/chat/events").session(admin.session())).andExpect(status().isForbidden());
+    var first = mvc.perform(get("/api/chat/events").session(customer.session())).andExpect(status().isOk()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted()).andReturn();
+    var second = mvc.perform(get("/api/chat/events").session(employee.session())).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted()).andReturn();
+    var third = mvc.perform(get("/api/chat/events").session(outsider.session())).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted()).andReturn();
+    long employeeId = users.byUsername("employee").orElseThrow().id();
+    long thread = ok(customer, "POST", "/api/chat/conversations", Map.of("peerId", employeeId)).get("id").asLong();
+    ok(customer, "POST", "/api/chat/conversations/" + thread + "/messages", Map.of("content", "实时咨询", "clientId", UUID.randomUUID().toString()));
+    assertTrue(first.getResponse().getContentAsString().contains("event:chat"));
+    assertTrue(second.getResponse().getContentAsString().contains("event:chat"));
+    assertFalse(third.getResponse().getContentAsString().contains("event:chat"));
+    assertFalse(second.getResponse().getContentAsString().contains("实时咨询"));
+    for (var stream : List.of(first, second, third)) stream.getRequest().getAsyncContext().complete();
+  }
+
+  @Test
   void consultationKeepsHistoryDeduplicatesRetriesAndTracksReadMessages() throws Exception {
     var customer = login("customer");
     var employee = login("employee");

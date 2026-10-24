@@ -2,7 +2,11 @@ package cn.shanhai.travel.controller;
 
 import cn.shanhai.travel.dto.ChatApi;
 import cn.shanhai.travel.service.ChatService;
+import cn.shanhai.travel.service.ChatEvents;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpSession;
+import org.springframework.http.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.*;
@@ -11,7 +15,13 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/chat")
 public class ChatController {
   private final ChatService chats;
-  public ChatController(ChatService chats) { this.chats = chats; }
+  private final ChatEvents events;
+  public ChatController(ChatService chats, ChatEvents events) { this.chats = chats; this.events = events; }
+  @GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+  public ResponseEntity<SseEmitter> events(HttpSession session) {
+    return ResponseEntity.ok().header("X-Accel-Buffering", "no").cacheControl(CacheControl.noStore())
+        .body(events.subscribe(chats.actor(), session));
+  }
   @GetMapping("/contacts")
   public List<ChatApi.Contact> contacts() { return chats.contacts(); }
   @GetMapping("/conversations")

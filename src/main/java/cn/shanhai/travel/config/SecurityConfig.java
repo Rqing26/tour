@@ -72,7 +72,8 @@ public class SecurityConfig {
                     .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
         .authorizeHttpRequests(
             a ->
-                a.requestMatchers(
+                a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC).permitAll()
+                    .requestMatchers(
                         "/api/auth/csrf",
                         "/api/auth/config",
                         "/api/auth/login",

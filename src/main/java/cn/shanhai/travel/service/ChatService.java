@@ -5,6 +5,7 @@ import cn.shanhai.travel.model.*;
 import cn.shanhai.travel.repository.*;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -12,8 +13,9 @@ public class ChatService {
   private final ChatRepository chats;
   private final UserService users;
   private final UserRepository accounts;
-  public ChatService(ChatRepository chats, UserService users, UserRepository accounts) {
-    this.chats = chats; this.users = users; this.accounts = accounts;
+  private final ApplicationEventPublisher events;
+  public ChatService(ChatRepository chats, UserService users, UserRepository accounts, ApplicationEventPublisher events) {
+    this.chats = chats; this.users = users; this.accounts = accounts; this.events = events;
   }
   public Account actor() {
     var actor = users.current();
@@ -38,6 +40,7 @@ public class ChatService {
     if (peer.role() != Role.EMPLOYEE) throw ApiException.forbidden();
     if (!peer.enabled()) throw ApiException.conflict("该顾问账号已停用");
     long id = chats.start(actor.id(), peer.id());
+    events.publishEvent(new ChatEvents.Changed(id, actor.id(), peer.id()));
     return chats.list(actor.id()).stream().filter(c -> c.id() == id).findFirst().orElseThrow();
   }
   public List<ChatApi.Message> history(long id, long before) {
@@ -54,13 +57,16 @@ public class ChatService {
     var peer = accounts.byId(conversation.peer(actor.id())).orElseThrow(() -> ApiException.missing("对方账号不存在"));
     if (!peer.enabled()) throw ApiException.conflict("对方账号已停用，暂时无法发送消息");
     if (input.content().isBlank() || input.content().strip().isEmpty()) throw ApiException.invalid("消息不能为空");
-    return chats.send(id, actor.id(), input);
+    var message = chats.send(id, actor.id(), input);
+    events.publishEvent(new ChatEvents.Changed(id, conversation.customerId(), conversation.employeeId()));
+    return message;
   }
   @Transactional
   public void read(long id, ChatApi.Read input) {
     var actor = actor();
     var conversation = access(id, actor, true);
     if (!chats.hasMessage(id, input.messageId())) throw ApiException.invalid("消息不属于此会话");
-    chats.read(conversation, actor.id(), input.messageId());
+    if (chats.read(conversation, actor.id(), input.messageId()))
+      events.publishEvent(new ChatEvents.Changed(id, conversation.customerId(), conversation.employeeId()));
   }
 }
