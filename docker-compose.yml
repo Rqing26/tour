@@ -1,0 +1,94 @@
+# 山海行 · 本地编排（两个互斥环境，用 profile 隔离）
+#
+# 默认 = H2 演示环境（无需外部数据库）：
+#   docker compose up -d --build
+#   open http://127.0.0.1:8080/travel/
+#
+# 需要 MySQL 8 时：
+#   docker compose --profile mysql up -d --build
+#   open http://127.0.0.1:8081/travel/     （mysql profile 不生成演示账号与演示数据）
+#
+# 停机并保留数据：docker compose down
+# 连数据一起清掉：docker compose down -v
+name: shanhai-travel
+
+services:
+  # ---------- 默认环境：内置 H2，数据落在命名卷 travel-data ----------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: shanhai-travel:local
+    container_name: travel-app
+    environment:
+      SPRING_PROFILES_ACTIVE: demo
+      SERVER_ADDRESS: 0.0.0.0
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - travel-data:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - -O
+        - /dev/null
+        - http://127.0.0.1:8080/travel/api/auth/config
+      interval: 15s
+      timeout: 3s
+      start_period: 45s
+      retries: 5
+    restart: unless-stopped
+
+  # ---------- MySQL 环境：容器内仍跑同一镜像，只换数据源 ----------
+  app-mysql:
+    profiles: ["mysql"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: shanhai-travel:local
+    container_name: travel-app-mysql
+    environment:
+      SPRING_PROFILES_ACTIVE: mysql
+      SERVER_ADDRESS: 0.0.0.0
+      PORT: "8080"
+      TRAVEL_DB_URL: "jdbc:mysql://db:3306/travel_agency_v2?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
+      TRAVEL_DB_USER: ${TRAVEL_DB_USER:-travel}
+      TRAVEL_DB_PASSWORD: ${TRAVEL_DB_PASSWORD:-Travel@2026}
+    ports:
+      - "8081:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    profiles: ["mysql"]
+    image: mysql:8.0
+    container_name: travel-db
+    environment:
+      MYSQL_DATABASE: travel_agency_v2
+      MYSQL_USER: ${TRAVEL_DB_USER:-travel}
+      MYSQL_PASSWORD: ${TRAVEL_DB_PASSWORD:-Travel@2026}
+      MYSQL_ROOT_PASSWORD: ${TRAVEL_DB_ROOT_PASSWORD:-Travel@2026}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    ports:
+      - "3307:3306"
+    volumes:
+      - travel-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 12
+    restart: unless-stopped
+
+volumes:
+  travel-data:
+  travel-mysql:
