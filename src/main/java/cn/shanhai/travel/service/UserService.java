@@ -3,6 +3,7 @@ package cn.shanhai.travel.service;
 import cn.shanhai.travel.dto.Api;
 import cn.shanhai.travel.model.*;
 import cn.shanhai.travel.repository.UserRepository;
+import cn.shanhai.travel.repository.ChatRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -14,10 +15,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
   private final UserRepository users;
   private final PasswordEncoder passwords;
+  private final ChatRepository chats;
 
-  public UserService(UserRepository users, PasswordEncoder passwords) {
+  public UserService(UserRepository users, PasswordEncoder passwords, ChatRepository chats) {
     this.users = users;
     this.passwords = passwords;
+    this.chats = chats;
   }
 
   public Account current() {
@@ -102,6 +105,7 @@ public class UserService {
     if (actor.id() == id || account.role() == Role.ADMIN)
       throw ApiException.conflict("不能删除当前账号或管理员账号");
     if (users.hasBookings(id)) throw ApiException.conflict("用户已关联订单，请改为停用账号以保留记录");
+    if (chats.hasConversations(id)) throw ApiException.conflict("用户已关联聊天会话，请改为停用账号以保留记录");
     users.delete(id);
   }
 }

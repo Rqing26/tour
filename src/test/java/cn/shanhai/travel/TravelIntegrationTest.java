@@ -38,6 +38,10 @@ class TravelIntegrationTest {
 
   @BeforeEach
   void reset() {
+    if (jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='chat_messages'", Integer.class) > 0) {
+      jdbc.update("DELETE FROM chat_messages");
+      jdbc.update("DELETE FROM chat_conversations");
+    }
     jdbc.update("DELETE FROM bookings");
     jdbc.update("DELETE FROM travel_routes");
     jdbc.update("DELETE FROM app_users");
@@ -434,6 +438,83 @@ class TravelIntegrationTest {
       Collections.sort(list);
       return list;
     }
+  }
+
+  @Test
+  void consultationKeepsHistoryDeduplicatesRetriesAndTracksReadMessages() throws Exception {
+    var customer = login("customer");
+    var employee = login("employee");
+    long employeeId = users.byUsername("employee").orElseThrow().id();
+    var contacts = data(mvc.perform(get("/api/chat/contacts").session(customer.session())).andExpect(status().isOk()).andReturn());
+    assertTrue(contacts.size() > 0);
+    assertFalse(contacts.get(0).has("phone"));
+    long thread = ok(customer, "POST", "/api/chat/conversations", Map.of("peerId", employeeId)).get("id").asLong();
+    assertEquals(thread, ok(customer, "POST", "/api/chat/conversations", Map.of("peerId", employeeId)).get("id").asLong());
+    var input = Map.of("content", "  想咨询云南行程\n带小朋友方便吗？  ", "clientId", UUID.randomUUID().toString());
+    var message = ok(customer, "POST", "/api/chat/conversations/" + thread + "/messages", input);
+    assertEquals("想咨询云南行程\n带小朋友方便吗？", message.get("content").asText());
+    assertEquals(message.get("id"), ok(customer, "POST", "/api/chat/conversations/" + thread + "/messages", input).get("id"));
+    var list = data(mvc.perform(get("/api/chat/conversations").session(employee.session())).andExpect(status().isOk()).andReturn());
+    assertEquals(1, list.get(0).get("unreadCount").asInt());
+    var history = data(mvc.perform(get("/api/chat/conversations/" + thread + "/messages").session(employee.session())).andExpect(status().isOk()).andReturn());
+    assertEquals(1, history.size());
+    assertEquals(message.get("id"), history.get(0).get("id"));
+    ok(employee, "POST", "/api/chat/conversations/" + thread + "/read", Map.of("messageId", message.get("id").asLong()));
+    list = data(mvc.perform(get("/api/chat/conversations").session(employee.session())).andReturn());
+    assertEquals(0, list.get(0).get("unreadCount").asInt());
+    ok(employee, "POST", "/api/chat/conversations/" + thread + "/messages", Map.of("content", "可以，我来帮你安排。", "clientId", UUID.randomUUID().toString()));
+    list = data(mvc.perform(get("/api/chat/conversations").session(customer.session())).andReturn());
+    assertEquals(1, list.get(0).get("unreadCount").asInt());
+  }
+
+  @Test
+  void chatRejectsOutsidersInvalidPairsAndInvalidMessages() throws Exception {
+    var admin = login("admin");
+    var customer = login("customer");
+    newUser(admin, "chat_outsider", "CUSTOMER");
+    var outsider = login("chat_outsider");
+    long employeeId = users.byUsername("employee").orElseThrow().id();
+    long customerId = users.byUsername("customer").orElseThrow().id();
+    long thread = ok(customer, "POST", "/api/chat/conversations", Map.of("peerId", employeeId)).get("id").asLong();
+    mvc.perform(get("/api/chat/conversations")).andExpect(status().isUnauthorized());
+    mvc.perform(get("/api/chat/conversations").session(admin.session())).andExpect(status().isForbidden());
+    mvc.perform(get("/api/chat/conversations/" + thread + "/messages").session(outsider.session())).andExpect(status().isForbidden());
+    assertEquals(403, request(outsider, "POST", "/api/chat/conversations/" + thread + "/messages", Map.of("content", "窥探", "clientId", UUID.randomUUID().toString())).getResponse().getStatus());
+    assertEquals(403, request(outsider, "POST", "/api/chat/conversations/" + thread + "/read", Map.of("messageId", 1)).getResponse().getStatus());
+    assertEquals(403, request(outsider, "POST", "/api/chat/conversations", Map.of("peerId", customerId)).getResponse().getStatus());
+    for (String content : List.of("   ", "x".repeat(2001))) {
+      assertEquals(400, request(customer, "POST", "/api/chat/conversations/" + thread + "/messages", Map.of("content", content, "clientId", UUID.randomUUID().toString())).getResponse().getStatus());
+    }
+    mvc.perform(post("/api/chat/conversations/" + thread + "/messages").session(customer.session()).contentType("application/json").content("{}" )).andExpect(status().isForbidden());
+    assertEquals(400, request(customer, "POST", "/api/chat/conversations/" + thread + "/read", Map.of("messageId", Long.MAX_VALUE)).getResponse().getStatus());
+    jdbc.update("UPDATE app_users SET enabled=FALSE WHERE id=?", employeeId);
+    assertEquals(409, request(customer, "POST", "/api/chat/conversations/" + thread + "/messages", Map.of("content", "你好", "clientId", UUID.randomUUID().toString())).getResponse().getStatus());
+  }
+
+  @Test
+  void chatHistoryPagesBackwardsAndReadCursorCannotHideFutureMessages() throws Exception {
+    var customer = login("customer");
+    var employee = login("employee");
+    long employeeId = users.byUsername("employee").orElseThrow().id();
+    long thread = ok(customer, "POST", "/api/chat/conversations", Map.of("peerId", employeeId)).get("id").asLong();
+    long first = 0;
+    for (int i = 0; i < 53; i++) {
+      long id = ok(customer, "POST", "/api/chat/conversations/" + thread + "/messages", Map.of("content", "消息 " + i, "clientId", UUID.randomUUID().toString())).get("id").asLong();
+      if (i == 0) first = id;
+    }
+    var latest = data(mvc.perform(get("/api/chat/conversations/" + thread + "/messages").session(employee.session())).andReturn());
+    assertEquals(50, latest.size());
+    var older = data(mvc.perform(get("/api/chat/conversations/" + thread + "/messages?beforeId=" + latest.get(0).get("id").asLong()).session(employee.session())).andReturn());
+    assertEquals(3, older.size());
+    assertEquals(first, older.get(0).get("id").asLong());
+    long last = latest.get(49).get("id").asLong();
+    ok(employee, "POST", "/api/chat/conversations/" + thread + "/read", Map.of("messageId", last));
+    ok(employee, "POST", "/api/chat/conversations/" + thread + "/read", Map.of("messageId", first));
+    var list = data(mvc.perform(get("/api/chat/conversations").session(employee.session())).andReturn());
+    assertEquals(0, list.get(0).get("unreadCount").asInt());
+    ok(customer, "POST", "/api/chat/conversations/" + thread + "/messages", Map.of("content", "新消息", "clientId", UUID.randomUUID().toString()));
+    list = data(mvc.perform(get("/api/chat/conversations").session(employee.session())).andReturn());
+    assertEquals(1, list.get(0).get("unreadCount").asInt());
   }
 
   @Test
