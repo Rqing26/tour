@@ -1,0 +1,27 @@
+# 构建上下文只保留源码，产物与本机数据一律不进镜像（对应 AGENTS.md C14）
+target/
+frontend/dist/
+frontend/node_modules/
+node_modules/
+src/main/resources/static/
+
+# 本机演示数据库与运行时目录不进镜像，容器内用自己的数据卷
+data/
+.runtime/
+
+# 版本库与协作配置不属于镜像内容
+.git/
+.github/
+.husky/
+.workbuddy/
+.vscode/
+.idea/
+*.iml
+
+# 本地环境与日志
+.env
+.env.*
+!.env.example
+*.log
+*.pid
+.DS_Store

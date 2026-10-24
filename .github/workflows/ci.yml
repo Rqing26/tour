@@ -65,3 +65,45 @@ jobs:
 
       - name: 格式检查
         run: npm run format:check
+
+  container:
+    name: 镜像构建与容器冒烟
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验容器化配置
+        run: |
+          python3 scripts/check_docker_config.py
+          docker compose config -q
+          docker compose --profile mysql config -q
+
+      - name: 启动 compose 默认环境
+        run: docker compose up -d --build app
+
+      - name: 等待健康检查通过
+        run: |
+          for attempt in $(seq 1 90); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' travel-app 2>/dev/null || echo starting)
+            if [ "$status" = "healthy" ]; then
+              echo "第 ${attempt} 次探测：容器健康"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "容器未在预期时间内转为 healthy，当前状态：$status"
+          docker compose logs --no-color
+          exit 1
+
+      - name: 端到端冒烟
+        run: python3 scripts/smoke_test.py
+        env:
+          TRAVEL_SMOKE_BASE: http://127.0.0.1:8080/travel/api
+
+      - name: 收集容器日志
+        if: always()
+        run: docker compose logs --no-color --tail 200
+
+      - name: 清理环境
+        if: always()
+        run: docker compose down -v
