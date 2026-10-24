@@ -34,3 +34,34 @@ jobs:
           name: surefire-reports
           path: target/surefire-reports/
           if-no-files-found: ignore
+
+  frontend:
+    name: 前端检查
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 静态检查
+        run: npm run lint
+
+      - name: 单元测试
+        run: npm test
+
+      - name: 类型检查与构建
+        run: npm run build
+
+      - name: 格式检查
+        run: npm run format:check
