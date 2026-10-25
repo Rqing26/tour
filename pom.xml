@@ -13,6 +13,7 @@
   <name>山海行旅行社管理系统</name>
   <properties>
     <java.version>21</java.version>
+    <springdoc.version>2.8.17</springdoc.version>
   </properties>
   <dependencies>
     <dependency>
@@ -49,6 +50,16 @@
       <groupId>com.mysql</groupId>
       <artifactId>mysql-connector-j</artifactId>
       <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <!-- 接口文档：答辩演示与前端联调需要可读的契约，属 §3 允许的 springdoc 豁免 -->
+    <dependency>
+      <groupId>org.springdoc</groupId>
+      <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+      <version>${springdoc.version}</version>
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>

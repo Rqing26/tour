@@ -27,3 +27,29 @@ spring:
 logging:
   level:
     org.springframework.security: WARN
+# 健康检查：容器编排与冒烟脚本复用同一个探针，只暴露聚合状态，不泄露内部细节
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+info:
+  app:
+    name: 山海行旅行社管理系统
+    version: 2.0.0
+# 接口文档：答辩与前端联调入口，路径保持 Spring 生态默认值
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+    tags-sorter: alpha
