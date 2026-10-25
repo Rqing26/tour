@@ -5,26 +5,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.MockMvc;
 
 /**
  * 契约与探活入口：接口文档必须能独立于登录态产出，健康检查必须能在容器编排中作为就绪探针使用。
  *
- * <p>两者都属于运维/联调入口，因此断言的是"内容对得上"，而不只是"没报错"。
+ * <p>两者都属于运维/联调入口，因此断言的是"内容对得上"，而不只是"没报错"。上下文与演示数据装置见
+ * {@link AbstractApiTest}。
  */
-@SpringBootTest
-@AutoConfigureMockMvc
-@ActiveProfiles({"demo", "test"})
-class ApiDocsTest {
-  @Autowired MockMvc mvc;
-  @Autowired ObjectMapper json;
-
+class ApiDocsTest extends AbstractApiTest {
   @Test
   void openApiDocumentDescribesExistingEndpoints() throws Exception {
     var body =
