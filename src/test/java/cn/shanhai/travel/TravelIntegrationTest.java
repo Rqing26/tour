@@ -4,153 +4,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-import cn.shanhai.travel.config.DemoData;
-import cn.shanhai.travel.dto.Api;
-import cn.shanhai.travel.repository.*;
-import com.fasterxml.jackson.databind.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
-import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.DefaultApplicationArguments;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockHttpSession;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.web.servlet.*;
 
-@SpringBootTest
-@AutoConfigureMockMvc
-@ActiveProfiles({"demo", "test"})
-class TravelIntegrationTest {
-  @Autowired MockMvc mvc;
-  @Autowired ObjectMapper json;
-  @Autowired JdbcTemplate jdbc;
-  @Autowired DemoData demo;
-  @Autowired RouteRepository routes;
-  @Autowired UserRepository users;
-  @Autowired OrderRepository orders;
-
-  record Client(MockHttpSession session, String csrf) {}
-
-  @BeforeEach
-  void reset() {
-    jdbc.update("DELETE FROM bookings");
-    jdbc.update("DELETE FROM travel_routes");
-    jdbc.update("DELETE FROM app_users");
-    demo.run(new DefaultApplicationArguments());
-  }
-
-  private JsonNode data(MvcResult r) throws Exception {
-    return json.readTree(r.getResponse().getContentAsString());
-  }
-
-  private Client anonymous() throws Exception {
-    var r = mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk()).andReturn();
-    return new Client((MockHttpSession) r.getRequest().getSession(), data(r).get("token").asText());
-  }
-
-  private Client login(String username) throws Exception {
-    var c = anonymous();
-    var result =
-        request(
-            c, "POST", "/api/auth/login", Map.of("username", username, "password", "Travel@2026"));
-    assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
-    var next =
-        mvc.perform(get("/api/auth/csrf").session(c.session()))
-            .andExpect(status().isOk())
-            .andReturn();
-    return new Client(c.session(), data(next).get("token").asText());
-  }
-
-  private MvcResult request(Client c, String method, String path, Object body) throws Exception {
-    return mvc.perform(
-            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request(
-                    org.springframework.http.HttpMethod.valueOf(method), path)
-                .session(c.session())
-                .header("X-CSRF-TOKEN", c.csrf())
-                .contentType("application/json")
-                .content(json.writeValueAsString(body)))
-        .andReturn();
-  }
-
-  private JsonNode ok(Client c, String method, String path, Object body) throws Exception {
-    var r = request(c, method, path, body);
-    assertEquals(200, r.getResponse().getStatus(), r.getResponse().getContentAsString());
-    return data(r);
-  }
-
-  private long route(int capacity) {
-    return routes.create(
-        new Api.RouteInput(
-            "测试线路",
-            "测试目的地",
-            "用于验证真实业务约束",
-            LocalDate.now().plusDays(40),
-            3,
-            new BigDecimal("1200.00"),
-            capacity,
-            true,
-            "guilin",
-            List.of("测试景点")));
-  }
-
-  private Map<String, Object> booking(long id, int count) {
-    return Map.of(
-        "routeId",
-        id,
-        "travelerCount",
-        count,
-        "contactName",
-        "测试联系人",
-        "contactPhone",
-        "13800000000",
-        "remark",
-        "集成测试");
-  }
-
-  private long createOrder(Client c, long route, int count) throws Exception {
-    return ok(c, "POST", "/api/orders", booking(route, count)).get("id").asLong();
-  }
-
-  private long newUser(Client admin, String name, String role) throws Exception {
-    return ok(
-            admin,
-            "POST",
-            "/api/users",
-            Map.of(
-                "username",
-                name,
-                "displayName",
-                name,
-                "phone",
-                "13800000000",
-                "password",
-                "Travel@2026",
-                "role",
-                role))
-        .get("id")
-        .asLong();
-  }
-
-  private Api.RouteInput edit(long id, String price, int capacity, LocalDate departure) {
-    var r = routes.find(id).orElseThrow();
-    return new Api.RouteInput(
-        r.name(),
-        r.destination(),
-        r.description(),
-        departure,
-        r.durationDays(),
-        new BigDecimal(price),
-        capacity,
-        r.active(),
-        r.imageKey(),
-        r.highlights());
-  }
-
+/** 业务流程用例：公共装置（上下文、造数、登录、并发）见 {@link AbstractApiTest}。 */
+class TravelIntegrationTest extends AbstractApiTest {
   @Test
   void loginRequiresCsrfAndRotatesTokenAndLogoutEndsSession() throws Exception {
     mvc.perform(
@@ -407,33 +267,6 @@ class TravelIntegrationTest {
                 request(second, "POST", "/api/orders/" + id + "/claim", Map.of())
                     .getResponse()
                     .getStatus()));
-  }
-
-  private List<Integer> concurrent(Callable<Integer> one, Callable<Integer> two) throws Exception {
-    try (var pool = Executors.newFixedThreadPool(2)) {
-      var ready = new CountDownLatch(2);
-      var go = new CountDownLatch(1);
-      var f1 =
-          pool.submit(
-              () -> {
-                ready.countDown();
-                go.await();
-                return one.call();
-              });
-      var f2 =
-          pool.submit(
-              () -> {
-                ready.countDown();
-                go.await();
-                return two.call();
-              });
-      assertTrue(ready.await(3, TimeUnit.SECONDS));
-      go.countDown();
-      var list =
-          new ArrayList<>(List.of(f1.get(10, TimeUnit.SECONDS), f2.get(10, TimeUnit.SECONDS)));
-      Collections.sort(list);
-      return list;
-    }
   }
 
   @Test
