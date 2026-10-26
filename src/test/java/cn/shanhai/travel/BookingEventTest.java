@@ -3,6 +3,7 @@ package cn.shanhai.travel;
 import static org.junit.jupiter.api.Assertions.*;
 
 import cn.shanhai.travel.repository.BookingEventRepository;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -115,5 +116,55 @@ class BookingEventTest extends AbstractApiTest {
     assertEquals("ASSIGNED", list.get(1).toStatus());
     assertEquals("接单", list.get(1).note());
     assertEquals(1, events.byBooking(second).size());
+  }
+
+  /** 下单就是时间线的第一条：来源状态为空，操作人是下单客户本人。 */
+  @Test
+  void placingOrderRecordsInitialEvent() throws Exception {
+    var customer = login("customer");
+    long id = createOrder(customer, route(5), 2);
+
+    var list = events.byBooking(id);
+    assertEquals(1, list.size());
+    assertNull(list.get(0).fromStatus());
+    assertEquals("PENDING", list.get(0).toStatus());
+    assertEquals(users.byUsername("customer").orElseThrow().id(), list.get(0).actorId());
+    assertEquals("CUSTOMER", list.get(0).actorRole());
+    assertEquals("PENDING", orders.find(id).orElseThrow().status());
+  }
+
+  /** 状态真的被条件更新改成功，才允许出现事件，且记录操作者与前后状态。 */
+  @Test
+  void claimAppendsEventAfterConditionalUpdate() throws Exception {
+    var customer = login("customer");
+    var employee = login("employee");
+    long id = createOrder(customer, route(5), 2);
+
+    ok(employee, "POST", "/api/orders/" + id + "/claim", Map.of());
+
+    var list = events.byBooking(id);
+    assertEquals(2, list.size());
+    assertEquals("PENDING", list.get(1).fromStatus());
+    assertEquals("ASSIGNED", list.get(1).toStatus());
+    assertEquals(users.byUsername("employee").orElseThrow().id(), list.get(1).actorId());
+    assertEquals("EMPLOYEE", list.get(1).actorRole());
+  }
+
+  /** 状态没变就不该留痕，否则时间线会出现"接了单但订单没变"的假记录。 */
+  @Test
+  void rejectedTransitionWritesNoEvent() throws Exception {
+    var admin = login("admin");
+    newUser(admin, "second_employee", "EMPLOYEE");
+    var customer = login("customer");
+    var employee = login("employee");
+    var second = login("second_employee");
+    long id = createOrder(customer, route(5), 1);
+    ok(employee, "POST", "/api/orders/" + id + "/claim", Map.of());
+
+    assertEquals(
+        409,
+        request(second, "POST", "/api/orders/" + id + "/claim", Map.of()).getResponse().getStatus());
+    assertEquals(2, events.byBooking(id).size());
+    assertEquals("ASSIGNED", orders.find(id).orElseThrow().status());
   }
 }
