@@ -2,7 +2,9 @@ package cn.shanhai.travel;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import cn.shanhai.travel.repository.BookingEventRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 
 /**
@@ -11,6 +13,7 @@ import org.springframework.dao.DataIntegrityViolationException;
  * <p>公共装置见 {@link AbstractApiTest}；每个用例的数据由基类重置，互不依赖执行顺序。
  */
 class BookingEventTest extends AbstractApiTest {
+  @Autowired BookingEventRepository events;
 
   /** 表结构决定"能回溯到什么程度"：首次建档没有来源状态，必须允许为空。 */
   @Test
@@ -68,5 +71,49 @@ class BookingEventTest extends AbstractApiTest {
                 "PENDING",
                 999999L,
                 "EMPLOYEE"));
+  }
+
+  /** 时间线要显示"谁做的"，所以读事件时一并取出操作人姓名，缺失 note 归一成空串。 */
+  @Test
+  void appendResolvesActorNameAndDefaultsBlankNote() {
+    long actor = users.byUsername("employee").orElseThrow().id();
+    String actorName = users.byId(actor).orElseThrow().displayName();
+    long booking = jdbc.queryForObject("SELECT MIN(id) FROM bookings", Long.class);
+
+    events.append(booking, null, "PENDING", actor, "EMPLOYEE", null);
+
+    var list = events.byBooking(booking);
+    assertEquals(1, list.size());
+    var event = list.get(0);
+    assertEquals(booking, event.bookingId());
+    assertNull(event.fromStatus());
+    assertEquals("PENDING", event.toStatus());
+    assertEquals(actor, event.actorId());
+    assertEquals(actorName, event.actorName());
+    assertEquals("EMPLOYEE", event.actorRole());
+    assertEquals("", event.note());
+    assertNotNull(event.createdAt());
+  }
+
+  /** 每次状态变更都追加一行，读取时必须按发生顺序、且只返回本订单的记录。 */
+  @Test
+  void byBookingReturnsItsOwnEventsInOccurrenceOrder() {
+    long actor = users.byUsername("employee").orElseThrow().id();
+    var ids = jdbc.queryForList("SELECT id FROM bookings ORDER BY id", Long.class);
+    long first = ids.get(0);
+    long second = ids.get(1);
+
+    events.append(first, null, "PENDING", actor, "EMPLOYEE", "");
+    events.append(second, null, "PENDING", actor, "EMPLOYEE", "");
+    events.append(first, "PENDING", "ASSIGNED", actor, "EMPLOYEE", "接单");
+
+    var list = events.byBooking(first);
+    assertEquals(2, list.size());
+    assertNull(list.get(0).fromStatus());
+    assertEquals("PENDING", list.get(0).toStatus());
+    assertEquals("PENDING", list.get(1).fromStatus());
+    assertEquals("ASSIGNED", list.get(1).toStatus());
+    assertEquals("接单", list.get(1).note());
+    assertEquals(1, events.byBooking(second).size());
   }
 }

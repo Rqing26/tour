@@ -98,6 +98,18 @@ public final class Api {
       String contactPhone,
       String remark) {}
 
+  /** 订单状态变更留痕：{@code fromStatus} 为空表示下单建档，此前没有状态。 */
+  public record OrderEvent(
+      long id,
+      long bookingId,
+      String fromStatus,
+      String toStatus,
+      long actorId,
+      String actorName,
+      String actorRole,
+      String note,
+      LocalDateTime createdAt) {}
+
   public record PopularRoute(
       long routeId, String name, String destination, long orderCount, int travelerCount) {}
 
