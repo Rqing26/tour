@@ -13,11 +13,17 @@ public class OrderService {
   private final OrderRepository orders;
   private final RouteRepository routes;
   private final UserService users;
+  private final BookingEventRepository events;
 
-  public OrderService(OrderRepository orders, RouteRepository routes, UserService users) {
+  public OrderService(
+      OrderRepository orders,
+      RouteRepository routes,
+      UserService users,
+      BookingEventRepository events) {
     this.orders = orders;
     this.routes = routes;
     this.users = users;
+    this.events = events;
   }
 
   public List<Api.Order> list(String q, String status) {
@@ -64,7 +70,10 @@ public class OrderService {
       throw ApiException.conflict("此线路已下架或已停止预订");
     if (d.travelerCount() > r.availableSeats())
       throw ApiException.conflict("余位不足，当前剩余 " + r.availableSeats() + " 位");
-    return orders.find(orders.create(a.id(), r, d)).orElseThrow();
+    long id = orders.create(a.id(), r, d);
+    // 下单即建档：没有上一状态，这条事件是时间线的起点。
+    events.append(id, null, "PENDING", a.id(), a.role().name(), "");
+    return orders.find(id).orElseThrow();
   }
 
   @Transactional
@@ -73,7 +82,7 @@ public class OrderService {
     if (a.role() != Role.EMPLOYEE) throw ApiException.forbidden();
     var o = orders.lock(id).orElseThrow(() -> ApiException.missing("订单不存在"));
     if (!o.status().equals("PENDING")) throw ApiException.conflict("订单状态已变化，请刷新后重试");
-    transition(o, "ASSIGNED", a.id());
+    transition(a, o, "ASSIGNED", a.id());
     return orders.find(id).orElseThrow();
   }
 
@@ -93,7 +102,7 @@ public class OrderService {
     if (a.role() != Role.EMPLOYEE || !Objects.equals(o.employeeId(), a.id()))
       throw ApiException.forbidden();
     if (!o.status().equals("ASSIGNED")) throw ApiException.conflict("只有已受理订单可以执行此操作");
-    transition(o, status, status.equals("PENDING") ? null : a.id());
+    transition(a, o, status, status.equals("PENDING") ? null : a.id());
     return orders.find(id).orElseThrow();
   }
 
@@ -106,12 +115,14 @@ public class OrderService {
     var o = orders.lock(id).orElseThrow(() -> ApiException.missing("订单不存在"));
     if (!Set.of("PENDING", "ASSIGNED").contains(o.status()))
       throw ApiException.conflict("已完成或已取消的订单无法取消");
-    transition(o, "CANCELLED", o.employeeId());
+    transition(a, o, "CANCELLED", o.employeeId());
     return orders.find(id).orElseThrow();
   }
 
-  private void transition(Api.Order old, String status, Long employee) {
+  private void transition(Account actor, Api.Order old, String status, Long employee) {
     if (!orders.compareAndTransition(old, status, employee))
       throw ApiException.conflict("订单已被其他人更新，请刷新后重试");
+    // 与状态变更共用同一个 @Transactional 边界：没有新开事务，状态与事件要么一起成功要么一起回滚。
+    events.append(old.id(), old.status(), status, actor.id(), actor.role().name(), "");
   }
 }

@@ -26,7 +26,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 /**
  * 接口测试公共装置：上下文、演示数据重置、登录态与 CSRF 令牌管理、造数工具。
  *
- * <p>测试库是内存 H2 的 {@code traveltest}，每个用例前把三张业务表清空再灌演示数据，保证用例互不依赖执行顺序。
+ * <p>测试库是内存 H2 的 {@code traveltest}，每个用例前按外键顺序清空业务表再灌演示数据，保证用例互不依赖执行顺序。
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -45,6 +45,8 @@ abstract class AbstractApiTest {
 
   @BeforeEach
   void resetDatabase() {
+    // 事件表通过外键挂在 bookings 上，必须先清子表，否则重置顺序会被约束挡住。
+    jdbc.update("DELETE FROM booking_events");
     jdbc.update("DELETE FROM bookings");
     jdbc.update("DELETE FROM travel_routes");
     jdbc.update("DELETE FROM app_users");
