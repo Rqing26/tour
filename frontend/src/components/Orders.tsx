@@ -1,4 +1,5 @@
 import Pagination, { usePagination } from "./Pagination";
+import OrderTimeline from "./OrderTimeline";
 import { useState } from "react";
 import {
   ArrowRight,
@@ -312,6 +313,7 @@ export default function Orders({
           {selected.status === "CANCELLED" && (
             <p className="form-note">这笔预订已取消，席位已释放。</p>
           )}
+          <OrderTimeline orderId={selected.id} />
           <div className="detail-grid">
             <div>
               <span>
