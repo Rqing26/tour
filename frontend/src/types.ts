@@ -45,6 +45,17 @@ export interface Order {
   contactPhone: string;
   remark: string;
 }
+export interface OrderEvent {
+  id: number;
+  bookingId: number;
+  fromStatus: OrderStatus | null;
+  toStatus: OrderStatus;
+  actorId: number;
+  actorName: string;
+  actorRole: Role;
+  note: string;
+  createdAt: string;
+}
 export interface DashboardData {
   totalOrders: number;
   pendingOrders: number;
