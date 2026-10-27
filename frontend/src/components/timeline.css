@@ -1,0 +1,155 @@
+.timeline {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 18px 20px 6px;
+  margin-bottom: 24px;
+}
+
+.timeline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.timeline-head .eyebrow {
+  font-size: 11px;
+}
+
+.timeline-head h4 {
+  font-size: 14px;
+  font-weight: 500;
+  color: #496383;
+  margin: 6px 0 0;
+}
+
+.timeline-head .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.timeline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.timeline-item {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding-bottom: 18px;
+}
+
+/* 竖线连到下一个节点，最后一个节点不画，避免悬空一截。 */
+.timeline-item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 27px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--line);
+}
+
+.timeline-dot {
+  position: relative;
+  z-index: 1;
+  width: 25px;
+  height: 25px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid #dfe6ef;
+  background: #eef2f7;
+  color: #4d627c;
+}
+
+.timeline-item.pending .timeline-dot {
+  background: #f8f3e5;
+  border-color: #eee1c2;
+  color: #846926;
+}
+
+.timeline-item.assigned .timeline-dot {
+  background: #edf3f7;
+  border-color: #d9e5ec;
+  color: #4d7281;
+}
+
+.timeline-item.completed .timeline-dot {
+  background: #edf4e9;
+  border-color: #dbe7d3;
+  color: #55754a;
+}
+
+.timeline-item.cancelled .timeline-dot {
+  background: #f2f3ef;
+  border-color: #e6e7e1;
+  color: #686f61;
+}
+
+.timeline-body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.timeline-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.timeline-line strong {
+  font-size: 13px;
+  font-weight: 500;
+  color: #3f5570;
+}
+
+.timeline-line time {
+  font-size: 11px;
+  color: #6b7a8c;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.timeline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #5b6b7f;
+}
+
+.timeline-role {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #f0f3f7;
+  color: #56687e;
+}
+
+.timeline-path {
+  color: #7a8797;
+}
+
+.timeline-note {
+  margin: 7px 0 0;
+  font-size: 11px;
+  color: #5b6b7f;
+  line-height: 1.7;
+}
+
+.timeline-empty {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+}

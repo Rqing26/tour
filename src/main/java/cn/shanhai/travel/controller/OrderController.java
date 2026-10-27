@@ -22,6 +22,11 @@ public class OrderController {
     return orders.list(q, status);
   }
 
+  @GetMapping("/orders/{id}/events")
+  public List<Api.OrderEvent> events(@PathVariable long id) {
+    return orders.timeline(id);
+  }
+
   @PostMapping("/orders")
   @PreAuthorize("hasRole('CUSTOMER')")
   public Api.Order book(@Valid @RequestBody Api.BookingInput d) {

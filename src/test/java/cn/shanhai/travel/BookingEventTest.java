@@ -1,8 +1,10 @@
 package cn.shanhai.travel;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import cn.shanhai.travel.repository.BookingEventRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -166,5 +168,61 @@ class BookingEventTest extends AbstractApiTest {
         request(second, "POST", "/api/orders/" + id + "/claim", Map.of()).getResponse().getStatus());
     assertEquals(2, events.byBooking(id).size());
     assertEquals("ASSIGNED", orders.find(id).orElseThrow().status());
+  }
+
+  /** 时间线接口按订单返回全部留痕，含操作人姓名与前后状态，顺序即发生顺序。 */
+  @Test
+  void eventsEndpointReturnsOrderTimelineForVisibleOrder() throws Exception {
+    var customer = login("customer");
+    var employee = login("employee");
+    long id = createOrder(customer, route(5), 2);
+    ok(employee, "POST", "/api/orders/" + id + "/claim", Map.of());
+    ok(employee, "POST", "/api/orders/" + id + "/complete", Map.of());
+
+    var body = eventList(customer, "/api/orders/" + id + "/events", 200);
+
+    assertEquals(3, body.size());
+    assertNull(body.get(0).get("fromStatus").asText(null));
+    assertEquals("PENDING", body.get(0).get("toStatus").asText());
+    assertEquals("CUSTOMER", body.get(0).get("actorRole").asText());
+    assertEquals(
+        users.byUsername("customer").orElseThrow().displayName(),
+        body.get(0).get("actorName").asText());
+    assertEquals("PENDING", body.get(1).get("fromStatus").asText());
+    assertEquals("ASSIGNED", body.get(1).get("toStatus").asText());
+    assertEquals("EMPLOYEE", body.get(1).get("actorRole").asText());
+    assertEquals("ASSIGNED", body.get(2).get("fromStatus").asText());
+    assertEquals("COMPLETED", body.get(2).get("toStatus").asText());
+    assertFalse(body.get(2).get("createdAt").asText().isBlank());
+  }
+
+  /** 留痕含操作人与时间，属于订单归属者的隐私数据：别的客户看不到，未登录看不到。 */
+  @Test
+  void eventsEndpointHidesOtherCustomersTimeline() throws Exception {
+    var admin = login("admin");
+    newUser(admin, "other_customer", "CUSTOMER");
+    var customer = login("customer");
+    var other = login("other_customer");
+    long id = createOrder(customer, route(5), 1);
+
+    eventList(other, "/api/orders/" + id + "/events", 403);
+    assertEquals(
+        401,
+        mvc.perform(get("/api/orders/" + id + "/events")).andReturn().getResponse().getStatus());
+  }
+
+  /** 订单不存在时返回 404，避免把"无权查看"和"没有这笔订单"混成一个结果。 */
+  @Test
+  void eventsEndpointReturnsNotFoundForUnknownOrder() throws Exception {
+    eventList(login("customer"), "/api/orders/999999/events", 404);
+  }
+
+  private JsonNode eventList(Client c, String path, int expected) throws Exception {
+    var result = mvc.perform(get(path).session(c.session())).andReturn();
+    assertEquals(
+        expected,
+        result.getResponse().getStatus(),
+        result.getResponse().getContentAsString());
+    return data(result);
   }
 }
