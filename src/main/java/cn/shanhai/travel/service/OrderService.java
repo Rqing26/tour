@@ -60,6 +60,14 @@ public class OrderService {
     };
   }
 
+  /** 读取订单留痕。可见性与订单列表同一口径：看不到的订单，其变更历史也不返回。 */
+  public List<Api.OrderEvent> timeline(long id) {
+    var a = users.current();
+    var o = orders.find(id).orElseThrow(() -> ApiException.missing("订单不存在"));
+    if (!visible(a, o)) throw ApiException.forbidden();
+    return events.byBooking(id);
+  }
+
   @Transactional
   public Api.Order create(Api.BookingInput d) {
     var a = users.lockCurrent();
