@@ -1,6 +1,7 @@
 package cn.shanhai.travel;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import cn.shanhai.travel.dto.Api;
 import cn.shanhai.travel.repository.OrderRepository.Filter;
@@ -8,6 +9,7 @@ import cn.shanhai.travel.repository.OrderRepository.Sort;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -112,6 +114,75 @@ class OrderPaginationTest extends AbstractApiTest {
     assertEquals(0, orders.count(new Filter(null, null, null, "_")));
   }
 
+  /** 管理员不受限制：所有客户、所有状态的订单都在同一页里，总数与行数一致。 */
+  @Test
+  void adminSeesEveryOrder() throws Exception {
+    var admin = login("admin");
+
+    var list = orderList(admin);
+
+    assertEquals(orders.count(Filter.ALL), list.size());
+    assertTrue(list.size() > 1);
+  }
+
+  /** 客户只能看到自己的订单，别人的订单一律不出现，且总数也不会把别人的算进来。 */
+  @Test
+  void customerSeesOnlyOwnOrders() throws Exception {
+    var admin = login("admin");
+    newUser(admin, "other_customer", "CUSTOMER");
+    var customer = login("customer");
+    var other = login("other_customer");
+    long mine = createOrder(customer, route(10), 1);
+    long theirs = createOrder(other, route(10), 1);
+
+    var own = ids(orderList(customer));
+    assertTrue(own.contains(mine));
+    assertFalse(own.contains(theirs));
+    assertEquals(List.of(theirs), ids(orderList(other)), "对方只应有自己刚下的那一笔");
+  }
+
+  /**
+   * 员工的可见范围是"待接池 + 自己名下"：别人接走的订单看不到，待接单则全员可见。
+   *
+   * <p>这条口径决定 SQL 里必须写成 {@code status='PENDING' OR employee_id=?}，不能只按客户那样等值过滤。
+   */
+  @Test
+  void employeeSeesPendingPoolAndOwnAssignedOnly() throws Exception {
+    var admin = login("admin");
+    newUser(admin, "second_employee", "EMPLOYEE");
+    var owner = login("employee");
+    var peer = login("second_employee");
+    long claimed = createOrder(login("customer"), route(10), 1);
+    long pending = createOrder(login("customer"), route(10), 1);
+    ok(owner, "POST", "/api/orders/" + claimed + "/claim", Map.of());
+
+    var ownerView = ids(orderList(owner));
+    var peerView = ids(orderList(peer));
+
+    assertTrue(ownerView.contains(claimed), "负责人应看到自己接的订单");
+    assertTrue(ownerView.contains(pending), "待接单对全员可见");
+    assertFalse(peerView.contains(claimed), "别人接走的订单不应出现在自己的列表里");
+    assertTrue(peerView.contains(pending));
+  }
+
+  /** 状态与关键词在可见范围内继续收窄，不能因为下推就漏掉其中一层条件。 */
+  @Test
+  void statusAndKeywordFilterWithinVisibleScope() throws Exception {
+    var customer = login("customer");
+    long id = createOrder(customer, route(10), 1);
+    var orderNo = orders.find(id).orElseThrow().orderNo();
+
+    assertEquals(List.of(id), ids(orderList(customer, "?status=PENDING&q=" + orderNo)));
+    assertEquals(0, orderList(customer, "?status=COMPLETED&q=" + orderNo).size());
+    // 无效状态沿用原有 400 契约，不能被下推悄悄变成空结果。
+    assertEquals(
+        400,
+        mvc.perform(get("/api/orders?status=UNKNOWN").session(customer.session()))
+            .andReturn()
+            .getResponse()
+            .getStatus());
+  }
+
   /** H2（DATABASE_TO_LOWER）与 MySQL 的元数据大小写不一致，统一转小写后比对。 */
   private Set<String> indexNames(String table) {
     return new HashSet<>(
@@ -131,5 +202,17 @@ class OrderPaginationTest extends AbstractApiTest {
 
   private List<Long> ids(List<Api.Order> orders) {
     return orders.stream().map(Api.Order::id).toList();
+  }
+
+  private List<Api.Order> orderList(Client c) throws Exception {
+    return orderList(c, "");
+  }
+
+  private List<Api.Order> orderList(Client c, String query) throws Exception {
+    var result = mvc.perform(get("/api/orders" + query).session(c.session())).andReturn();
+    assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    return json.readValue(
+        result.getResponse().getContentAsString(),
+        json.getTypeFactory().constructCollectionType(List.class, Api.Order.class));
   }
 }
