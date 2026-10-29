@@ -32,24 +32,19 @@ public class OrderService {
         && !status.isBlank()
         && !Set.of("PENDING", "ASSIGNED", "COMPLETED", "CANCELLED").contains(status))
       throw ApiException.invalid("无效订单状态");
-    return orders.all().stream()
-        .filter(o -> visible(a, o))
-        .filter(o -> status == null || status.isBlank() || o.status().equals(status))
-        .filter(
-            o ->
-                q == null
-                    || (o.orderNo()
-                            + " "
-                            + o.routeName()
-                            + " "
-                            + o.customerName()
-                            + " "
-                            + o.contactName()
-                            + " "
-                            + Objects.toString(o.employeeName(), ""))
-                        .toLowerCase(Locale.ROOT)
-                        .contains(q.toLowerCase(Locale.ROOT)))
-        .toList();
+    // 可见性、状态与关键词都下推给 SQL：不再把全表捞进内存，分页窗口才能真的作用在数据库上。
+    return orders.page(filter(a, q, status), OrderRepository.Sort.DEFAULT, 0, Integer.MAX_VALUE);
+  }
+
+  /** 三种角色的可见范围，翻译成仓储能拼进 WHERE 的条件；管理员不限范围，故两个归属字段都为空。 */
+  private static OrderRepository.Filter filter(Account a, String q, String status) {
+    var wanted = status == null || status.isBlank() ? null : status;
+    var keyword = q == null || q.isBlank() ? null : q;
+    return switch (a.role()) {
+      case ADMIN -> new OrderRepository.Filter(null, null, wanted, keyword);
+      case CUSTOMER -> new OrderRepository.Filter(a.id(), null, wanted, keyword);
+      case EMPLOYEE -> new OrderRepository.Filter(null, a.id(), wanted, keyword);
+    };
   }
 
   private boolean visible(Account a, Api.Order o) {

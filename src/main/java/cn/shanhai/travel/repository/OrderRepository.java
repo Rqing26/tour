@@ -139,11 +139,6 @@ public class OrderRepository {
     return total == null ? 0 : total;
   }
 
-  /** 不分页的全量读取，供尚未接入分页的调用方过渡使用（T3.3 起 list 走带条件的 page）。 */
-  public List<Api.Order> all() {
-    return page(Filter.ALL, Sort.DEFAULT, 0, Integer.MAX_VALUE);
-  }
-
   public Optional<Api.Order> find(long id) {
     return jdbc.query(SELECT + " WHERE b.id=?", MAPPER, id).stream().findFirst();
   }
