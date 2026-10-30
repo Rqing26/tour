@@ -27,13 +27,64 @@ public class OrderService {
   }
 
   public List<Api.Order> list(String q, String status) {
+    return list(q, status, null);
+  }
+
+  public List<Api.Order> list(String q, String status, String sort) {
     var a = users.current();
-    if (status != null
-        && !status.isBlank()
-        && !Set.of("PENDING", "ASSIGNED", "COMPLETED", "CANCELLED").contains(status))
-      throw ApiException.invalid("无效订单状态");
+    requireStatus(status);
     // 可见性、状态与关键词都下推给 SQL：不再把全表捞进内存，分页窗口才能真的作用在数据库上。
-    return orders.page(filter(a, q, status), OrderRepository.Sort.DEFAULT, 0, Integer.MAX_VALUE);
+    return orders.page(filter(a, q, status), parseSort(sort), 0, Integer.MAX_VALUE);
+  }
+
+  /**
+   * 分页查询：页码与页大小都由服务端归一，{@code total} 与当前页共用同一套过滤条件。
+   *
+   * <p>页大小上限 {@value #MAX_PAGE_SIZE}：前端传多大都不会把整表拉进一次响应。
+   */
+  public Api.Page<Api.Order> page(String q, String status, Integer page, Integer size, String sort) {
+    var a = users.current();
+    requireStatus(status);
+    int actualSize = Math.min(Math.max(size == null ? DEFAULT_PAGE_SIZE : size, 1), MAX_PAGE_SIZE);
+    int current = page == null || page < 0 ? 0 : page;
+    var filter = filter(a, q, status);
+    // 深翻页的偏移量可能超过 int：先在 long 里算，再压到 LIMIT/OFFSET 能接受的上界。
+    long offset = (long) current * actualSize;
+    var items =
+        orders.page(
+            filter, parseSort(sort), (int) Math.min(offset, Integer.MAX_VALUE), actualSize);
+    return new Api.Page<>(items, orders.count(filter), current, actualSize);
+  }
+
+  /** 页大小默认值与上限：上限之外的请求被压到上限，而不是报错。 */
+  static final int DEFAULT_PAGE_SIZE = 10;
+
+  static final int MAX_PAGE_SIZE = 100;
+
+  private static final Set<String> STATUSES =
+      Set.of("PENDING", "ASSIGNED", "COMPLETED", "CANCELLED");
+
+  private static void requireStatus(String status) {
+    if (status != null && !status.isBlank() && !STATUSES.contains(status))
+      throw ApiException.invalid("无效订单状态");
+  }
+
+  /**
+   * 排序参数形如 {@code createdAt} 或 {@code totalAmount,asc}，只接受白名单键。
+   *
+   * <p>真实列名由仓储映射，任何用户输入都不会被拼进 SQL；拼错的键直接 400，不静默回退。
+   */
+  private static OrderRepository.Sort parseSort(String sort) {
+    if (sort == null || sort.isBlank()) return OrderRepository.Sort.DEFAULT;
+    var parts = sort.split(",");
+    if (parts.length > 2) throw ApiException.invalid("排序参数格式应为 字段[,asc|desc]");
+    var key = parts[0].trim();
+    if (!OrderRepository.Sort.supports(key)) throw ApiException.invalid("无效排序字段：" + key);
+    if (parts.length == 1) return new OrderRepository.Sort(key, true);
+    var direction = parts[1].trim().toLowerCase(Locale.ROOT);
+    if (!direction.equals("asc") && !direction.equals("desc"))
+      throw ApiException.invalid("无效排序方向，只支持 asc 或 desc");
+    return new OrderRepository.Sort(key, direction.equals("desc"));
   }
 
   /** 三种角色的可见范围，翻译成仓储能拼进 WHERE 的条件；管理员不限范围，故两个归属字段都为空。 */

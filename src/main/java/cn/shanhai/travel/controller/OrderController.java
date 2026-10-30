@@ -16,10 +16,19 @@ public class OrderController {
     this.orders = orders;
   }
 
+  /**
+   * 订单列表。不带 {@code page}/{@code size} 时保持原数组响应（已有调用方不受影响），
+   * 带上任一参数才返回分页信封 {@code {items,total,page,size}}。
+   */
   @GetMapping("/orders")
-  public List<Api.Order> orders(
-      @RequestParam(required = false) String q, @RequestParam(required = false) String status) {
-    return orders.list(q, status);
+  public Object orders(
+      @RequestParam(required = false) String q,
+      @RequestParam(required = false) String status,
+      @RequestParam(required = false) Integer page,
+      @RequestParam(required = false) Integer size,
+      @RequestParam(required = false) String sort) {
+    if (page == null && size == null) return orders.list(q, status, sort);
+    return orders.page(q, status, page, size, sort);
   }
 
   @GetMapping("/orders/{id}/events")

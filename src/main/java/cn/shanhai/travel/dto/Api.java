@@ -110,6 +110,9 @@ public final class Api {
       String note,
       LocalDateTime createdAt) {}
 
+  /** 分页信封：{@code total} 是同一过滤条件下的全量行数，{@code page} 从 0 开始，{@code size} 是真正生效的页大小。 */
+  public record Page<T>(List<T> items, long total, int page, int size) {}
+
   public record PopularRoute(
       long routeId, String name, String destination, long orderCount, int travelerCount) {}
 
