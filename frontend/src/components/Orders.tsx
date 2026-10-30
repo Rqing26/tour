@@ -1,6 +1,6 @@
-import Pagination, { usePagination } from "./Pagination";
+import Pagination from "./Pagination";
 import OrderTimeline from "./OrderTimeline";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   CalendarDays,
@@ -14,8 +14,16 @@ import {
 } from "lucide-react";
 import { api, errorMessage } from "../api";
 import { dateLabel, money, statusLabels } from "../assets";
+import {
+  ORDER_PAGE_SIZE,
+  ORDER_STATUS_TABS,
+  clampPage,
+  pageCount,
+  pagedOrdersPath,
+  rangeLabel,
+} from "../orderQuery";
 import type { Notify, Order, OrderStatus, User } from "../types";
-import { useResource } from "../useResource";
+import { usePagedResource } from "../useResource";
 import {
   Empty,
   ErrorState,
@@ -47,28 +55,58 @@ export default function Orders({
   user: User;
   notify: Notify;
 }) {
-  const { data, loading, error, refresh } = useResource<Order[]>("/orders");
   const [search, setSearch] = useState("");
+  // 搜索改成服务端查询后，敲一个键就发一次请求会打满接口：停顿一会儿再把关键词交给服务端。
+  const [appliedSearch, setAppliedSearch] = useState("");
   const [status, setStatus] = useState<OrderStatus | "">("");
+  const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Order | null>(null);
+  const { items, total, loading, error, refresh, version } =
+    usePagedResource<Order>(
+      pagedOrdersPath({ q: appliedSearch, status }, page, ORDER_PAGE_SIZE),
+    );
   const [confirm, setConfirm] = useState<{
     order: Order;
     action: Action;
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const isCustomer = user.role === "CUSTOMER";
   const isEmployee = user.role === "EMPLOYEE";
-  const filtered =
-    data?.filter(
-      (order) =>
-        (!status || order.status === status) &&
-        (!search ||
-          `${order.orderNo} ${order.routeName} ${order.customerName} ${order.contactName} ${order.destination} ${order.employeeName || ""} ${order.contactPhone}`
-            .toLowerCase()
-            .includes(search.toLowerCase())),
-    ) || [];
-  const pagination = usePagination(filtered, 10, `${search}|${status}`);
+  const pages = pageCount(total, ORDER_PAGE_SIZE);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAppliedSearch(search);
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+  // 页码越界（删到最后一条、取消订单后总数变小）时拉回最后一页，别停在空列表上。
+  useEffect(() => {
+    if (page > pages - 1) setPage(clampPage(page, total, ORDER_PAGE_SIZE));
+  }, [page, pages, total]);
+  // 分页后前端不再持有全量订单，页签数字只能各问一次总数：size=1 只取 total，不取详情。
+  useEffect(() => {
+    let active = true;
+    Promise.all(
+      ORDER_STATUS_TABS.map((value) =>
+        api<{ total: number }>(
+          pagedOrdersPath({ q: appliedSearch, status: value }, 0, 1),
+        ).then((result) => [value, result.total] as const),
+      ),
+    )
+      .then((entries) => {
+        if (active) setCounts(Object.fromEntries(entries));
+      })
+      .catch(() => {
+        // 页签数字只是辅助信息：取不到就留空，列表本身另有错误提示。
+        if (active) setCounts({});
+      });
+    return () => {
+      active = false;
+    };
+  }, [appliedSearch, version]);
   const tabs: { value: OrderStatus | ""; label: string }[] = [
     { value: "", label: "全部订单" },
     { value: "PENDING", label: isEmployee ? "待接订单池" : "待接单" },
@@ -144,14 +182,13 @@ export default function Orders({
                 role="tab"
                 aria-selected={status === tab.value}
                 className={status === tab.value ? "active" : ""}
-                onClick={() => setStatus(tab.value)}
+                onClick={() => {
+                  setStatus(tab.value);
+                  setPage(0);
+                }}
               >
                 {tab.label}
-                <span>
-                  {data?.filter(
-                    (order) => !tab.value || order.status === tab.value,
-                  ).length || 0}
-                </span>
+                <span>{counts[tab.value] ?? 0}</span>
               </button>
             ))}
           </div>
@@ -168,7 +205,7 @@ export default function Orders({
           <Spinner />
         ) : error ? (
           <ErrorState message={error} retry={refresh} />
-        ) : !filtered.length ? (
+        ) : !items.length ? (
           <Empty
             title={
               status === "PENDING" && isEmployee
@@ -176,7 +213,7 @@ export default function Orders({
                 : "没有找到订单"
             }
             description={
-              search || status
+              appliedSearch || status
                 ? "调整筛选条件，看看其他订单。"
                 : isCustomer
                   ? "预订一条心仪的线路，开启你的下一段旅程。"
@@ -198,7 +235,7 @@ export default function Orders({
                   </tr>
                 </thead>
                 <tbody>
-                  {pagination.visibleItems.map((order) => (
+                  {items.map((order) => (
                     <tr key={order.id}>
                       <td>
                         <div className="order-line">
@@ -265,12 +302,12 @@ export default function Orders({
               </table>
             </div>
             <div className="table-footer">
-              <span>共 {filtered.length} 笔订单</span>
+              <span>{rangeLabel(total, page, ORDER_PAGE_SIZE)}</span>
               <span>订单价格以预订时的价格为准</span>
               <Pagination
-                page={pagination.page}
-                pages={pagination.pages}
-                onChange={pagination.setPage}
+                page={page + 1}
+                pages={pages}
+                onChange={(next) => setPage(next - 1)}
               />
             </div>
           </>
