@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import cn.shanhai.travel.dto.Api;
 import cn.shanhai.travel.repository.OrderRepository.Filter;
 import cn.shanhai.travel.repository.OrderRepository.Sort;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -181,6 +183,98 @@ class OrderPaginationTest extends AbstractApiTest {
             .andReturn()
             .getResponse()
             .getStatus());
+  }
+
+  /** 接口契约：带分页参数时返回信封 {@code {items,total,page,size}}，total 是过滤后的全量行数。 */
+  @Test
+  void pagedRequestReturnsEnvelopeWithItemsAndTotal() throws Exception {
+    var customer = login("customer");
+    long route = route(100);
+    for (int i = 0; i < 12; i++) createOrder(customer, route, 1);
+
+    var body = envelope(login("admin"), "?page=0&size=5");
+
+    assertEquals(5, body.get("items").size(), "首页应恰好装满一页");
+    assertTrue(body.get("total").asLong() >= 12, "total 是过滤后的全量行数，不是当前页条数");
+    assertEquals(0, body.get("page").asInt());
+    assertEquals(5, body.get("size").asInt());
+    assertEquals(
+        body.get("total").asLong(), orderList(login("admin")).size(), "信封里的 total 应与整表口径一致");
+  }
+
+  /** 页大小上限在服务端兜底：前端传 1000，响应里必须回显真正生效的 100。 */
+  @Test
+  void pageSizeAboveLimitFallsBackToHundred() throws Exception {
+    var body = envelope(login("admin"), "?page=0&size=1000");
+
+    assertEquals(100, body.get("size").asInt(), "size 超限应被服务端压到 100");
+    assertTrue(body.get("items").size() <= 100);
+    assertEquals(0, body.get("page").asInt());
+  }
+
+  /** 不带分页参数时仍是原来的数组：C4 要求已有调用方（前端旧代码、冒烟脚本）不被打断。 */
+  @Test
+  void requestWithoutPagingParamsKeepsArrayContract() throws Exception {
+    var result =
+        mvc.perform(get("/api/orders").session(login("admin").session())).andReturn();
+
+    assertEquals(200, result.getResponse().getStatus());
+    var node = json.readTree(result.getResponse().getContentAsString());
+    assertTrue(node.isArray(), "未传 page/size 时应保持数组响应，不能变成信封");
+    assertEquals(orderList(login("admin")).size(), node.size());
+  }
+
+  /** 排序键只接受白名单，拼错的键要报 400，而不是悄悄回退成默认排序。 */
+  @Test
+  void invalidSortKeyIsRejectedWithBadRequest() throws Exception {
+    var result =
+        mvc.perform(get("/api/orders?page=0&size=5&sort=b.created_at").session(login("admin").session()))
+            .andReturn();
+
+    assertEquals(400, result.getResponse().getStatus());
+    assertTrue(result.getResponse().getContentAsString().contains("排序"));
+    var direction =
+        mvc.perform(get("/api/orders?page=0&size=5&sort=createdAt,sideways").session(login("admin").session()))
+            .andReturn();
+    assertEquals(400, direction.getResponse().getStatus());
+  }
+
+  /** 翻页在 HTTP 层也不重不漏：第二页与第一页无交集，且页内顺序连续。 */
+  @Test
+  void consecutivePagesDoNotOverlapOverHttp() throws Exception {
+    var customer = login("customer");
+    long route = route(100);
+    for (int i = 0; i < 8; i++) createOrder(customer, route, 1);
+    var admin = login("admin");
+
+    var first = idsOf(envelope(admin, "?page=0&size=4"));
+    var second = idsOf(envelope(admin, "?page=1&size=4"));
+
+    assertEquals(4, first.size());
+    assertEquals(4, second.size());
+    assertTrue(Collections.disjoint(first, second), "相邻页不能重复出现同一订单");
+    assertEquals(
+        ids(orderList(admin)).subList(0, 8), concat(first, second), "两页拼起来应与整表前 8 条一致");
+  }
+
+  private JsonNode envelope(Client c, String query) throws Exception {
+    var result = mvc.perform(get("/api/orders" + query).session(c.session())).andReturn();
+    assertEquals(200, result.getResponse().getStatus(), result.getResponse().getContentAsString());
+    var node = json.readTree(result.getResponse().getContentAsString());
+    assertTrue(node.isObject(), "带分页参数时应返回 {items,total,page,size} 信封");
+    return node;
+  }
+
+  private List<Long> idsOf(JsonNode envelope) {
+    var list = new ArrayList<Long>();
+    envelope.get("items").forEach(item -> list.add(item.get("id").asLong()));
+    return list;
+  }
+
+  private List<Long> concat(List<Long> first, List<Long> second) {
+    var all = new ArrayList<>(first);
+    all.addAll(second);
+    return all;
   }
 
   /** H2（DATABASE_TO_LOWER）与 MySQL 的元数据大小写不一致，统一转小写后比对。 */
