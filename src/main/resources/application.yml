@@ -45,6 +45,11 @@ info:
   app:
     name: 山海行旅行社管理系统
     version: 2.0.0
+# 线路图片上传：文件落在这个目录（相对工作目录，已被 .gitignore 忽略），表里只记文件名。
+# 静态资源映射（T4.4）读同一个键，避免上传目录与访问路径两处各写一遍。
+travel:
+  upload:
+    dir: data/uploads
 # 接口文档：答辩与前端联调入口，路径保持 Spring 生态默认值
 springdoc:
   api-docs:

@@ -29,4 +29,9 @@ public class ApiException extends RuntimeException {
   public static ApiException invalid(String message) {
     return new ApiException(HttpStatus.BAD_REQUEST, message);
   }
+
+  /** 请求体超过业务上限：与"格式不合法"区分开，前端可据此提示"图片太大"而不是"格式不对"。 */
+  public static ApiException tooLarge(String message) {
+    return new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, message);
+  }
 }
