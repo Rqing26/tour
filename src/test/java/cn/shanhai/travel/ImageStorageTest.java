@@ -75,6 +75,7 @@ class ImageStorageTest {
 
     assertTrue(
         name.matches("[0-9a-f]{32}\\.png"), "存盘名必须是 UUID + 归一后的后缀，原始文件名不进文件系统");
+    assertEquals(root.toAbsolutePath().normalize(), images.root(), "root() 供静态映射复用，须是归一后的绝对路径");
     var stored = root.resolve(name);
     assertTrue(Files.exists(stored), "文件应落在配置的根目录下");
     assertArrayEquals(bytes, Files.readAllBytes(stored));
