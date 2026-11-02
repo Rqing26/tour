@@ -143,8 +143,14 @@ class ImageUploadTest extends AbstractApiTest {
   void uploadsPathDoesNotEscapeItsRoot() throws Exception {
     mvc.perform(MockMvcRequestBuilders.get("/uploads/not-exists.png"))
         .andExpect(status().isNotFound());
-    mvc.perform(MockMvcRequestBuilders.get("/uploads/../application.yml"))
-        .andExpect(status().isNotFound());
+
+    // 带 `..` 的路径在进入资源解析前就被判为非法（400），不存在的文件是 404——两种都算拒答，
+    // 这里断言的是"绝不把根目录外的文件读出来"，而不是具体哪个状态码。
+    var escaped = mvc.perform(MockMvcRequestBuilders.get("/uploads/../application.yml")).andReturn();
+    assertNotEquals(200, escaped.getResponse().getStatus(), "越界路径不得被当成文件读出");
+    assertFalse(
+        escaped.getResponse().getContentAsString().contains("spring"),
+        "响应里不能出现上传根目录以外的文件内容");
   }
 
   @Test
