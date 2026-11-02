@@ -123,6 +123,31 @@ class ImageUploadTest extends AbstractApiTest {
   }
 
   @Test
+  void uploadedImageIsServedUnderUploadsPath() throws Exception {
+    var admin = login("admin");
+    long id = route(20);
+    var stored = data(upload(admin, id, png("cover.png"))).get("imagePath").asText();
+
+    var r =
+        mvc.perform(MockMvcRequestBuilders.get("/uploads/" + stored))
+            .andExpect(status().isOk())
+            .andReturn();
+
+    assertArrayEquals(PNG_HEAD, r.getResponse().getContentAsByteArray());
+    assertTrue(
+        r.getResponse().getContentType().startsWith("image/png"),
+        "静态映射要带上图片的真实类型，否则浏览器会当成下载");
+  }
+
+  @Test
+  void uploadsPathDoesNotEscapeItsRoot() throws Exception {
+    mvc.perform(MockMvcRequestBuilders.get("/uploads/not-exists.png"))
+        .andExpect(status().isNotFound());
+    mvc.perform(MockMvcRequestBuilders.get("/uploads/../application.yml"))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
   void uploadToMissingRouteIsNotFound() throws Exception {
     var admin = login("admin");
 
