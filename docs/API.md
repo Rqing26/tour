@@ -115,3 +115,19 @@ Page<T>     {items: T[], total, page, size}
 - `employeeId` / `employeeName` / `fromStatus` 可为 `null`：分别表示尚未接单、下单建档。
 - 密码散列不出现在任何响应里。
 - 新增响应字段必须可空，前端不得假定其存在（C4）。
+
+## 旅行者与顾问私聊
+
+以下路径仍以 `/travel/api` 为前缀，仅会话双方可读写；管理员不能参与或浏览私聊。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/chat/contacts` | 客户可选择的已启用顾问，不含电话或密码；员工返回空数组 |
+| GET | `/chat/conversations` | 当前账号的会话列表，含 `peer`、可空 `lastMessage`、`updatedAt`、`unreadCount`、`peerReadId` |
+| POST | `/chat/conversations` | 客户传 `{peerId}` 创建或复用与员工的一对一会话 |
+| GET | `/chat/conversations/{id}/messages` | 按 ID 正序返回最近 50 条；可用排他的 `beforeId` 游标向前翻页，游标须为正数 |
+| POST | `/chat/conversations/{id}/messages` | `{content,clientId}`；正文 1–2000 字符、去掉首尾空白，`clientId` 为 UUID 文本 |
+| POST | `/chat/conversations/{id}/read` | `{messageId}` 必须属于当前会话，已读位置只前进不后退 |
+
+消息字段为 `{id,conversationId,senderId,content,clientId,createdAt}`。同一会话、发送者和 `clientId` 的重试返回原消息；并发创建同一配对或重试发送也只保留一份记录。POST 需要登录后的 CSRF 令牌。
+未登录为 401；管理员或非参与者访问为 403；非法正文、游标或消息 ID 为 400；会话/顾问不存在为 404；对方停用后发送为 409，历史仍可读。关联聊天会话的账号删除返回 409，应改用停用以保留历史。
