@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { CalendarDays, Check, Clock3, MapPin, UsersRound } from "lucide-react";
 import { api, errorMessage } from "../api";
-import { dateLabel, money, photo } from "../assets";
+import { cover, dateLabel, money } from "../assets";
 import type { Route, User } from "../types";
 import { Field, Modal } from "./UI";
 
@@ -57,7 +57,7 @@ export default function BookingDialog({
       }}
     >
       <div className="booking-cover">
-        <img src={photo(route.imageKey)} alt={`${route.destination}旅行风景`} />
+        <img src={cover(route)} alt={`${route.destination}旅行风景`} />
         <span>
           <MapPin size={14} />
           {route.destination}

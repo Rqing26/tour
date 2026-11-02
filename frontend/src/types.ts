@@ -21,8 +21,9 @@ export interface Route {
   active: boolean;
   imageKey: string;
   highlights: string[];
+  imagePath?: string | null;
 }
-export type RouteInput = Omit<Route, "id" | "availableSeats">;
+export type RouteInput = Omit<Route, "id" | "availableSeats" | "imagePath">;
 export interface Order {
   id: number;
   orderNo: string;
