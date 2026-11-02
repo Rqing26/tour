@@ -1,20 +1,42 @@
 package cn.shanhai.travel.controller;
 
 import cn.shanhai.travel.dto.ChatApi;
+import cn.shanhai.travel.service.ChatEvents;
 import cn.shanhai.travel.service.ChatService;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {
   private final ChatService chats;
+  private final ChatEvents events;
 
-  public ChatController(ChatService chats) {
+  public ChatController(ChatService chats, ChatEvents events) {
     this.chats = chats;
+    this.events = events;
   }
+
+  @GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+  public ResponseEntity<SseEmitter> events(HttpSession session) {
+    return ResponseEntity.ok()
+        .header("X-Accel-Buffering", "no")
+        .cacheControl(CacheControl.noStore())
+        .body(events.subscribe(chats.actor(), session));
+  }
+
+  // A browser closing a streaming response needs no JSON error written to the closed socket.
+  @ExceptionHandler({
+    IOException.class,
+    org.springframework.web.context.request.async.AsyncRequestTimeoutException.class
+  })
+  public void disconnected() {}
 
   @GetMapping("/contacts")
   public List<ChatApi.Contact> contacts() {
