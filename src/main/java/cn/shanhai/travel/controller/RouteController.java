@@ -4,8 +4,10 @@ import cn.shanhai.travel.dto.Api;
 import cn.shanhai.travel.service.*;
 import jakarta.validation.Valid;
 import java.util.*;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api")
@@ -39,6 +41,13 @@ public class RouteController {
   @PreAuthorize("hasRole('ADMIN')")
   public Api.Route updateRoute(@PathVariable long id, @Valid @RequestBody Api.RouteInput d) {
     return routes.update(id, d);
+  }
+
+  @PostMapping(value = "/routes/{id}/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @PreAuthorize("hasRole('ADMIN')")
+  public Api.Route uploadRouteImage(
+      @PathVariable long id, @RequestParam("file") MultipartFile file) {
+    return routes.uploadImage(id, file);
   }
 
   @DeleteMapping("/routes/{id}")

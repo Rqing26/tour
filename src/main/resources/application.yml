@@ -18,6 +18,12 @@ spring:
       write-dates-as-timestamps: false
   mvc:
     log-resolved-exception: false
+  # 线路封面单张上限 5MB（与 ImageStorageService.MAX_BYTES 一致），请求体留 1MB 余量给表单其他部件。
+  # 超过限额时容器在进入控制器之前就拒收，由 ApiErrorHandler 翻译成 413。
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   flyway:
     baseline-on-migrate: false
   datasource:

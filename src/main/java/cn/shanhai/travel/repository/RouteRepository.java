@@ -32,7 +32,8 @@ public class RouteRepository {
             r.getInt("capacity") - sold(r.getLong("id")),
             r.getBoolean("active"),
             r.getString("image_key"),
-            readHighlights(r.getString("highlights")));
+            readHighlights(r.getString("highlights")),
+            r.getString("image_path"));
   }
 
   private List<String> readHighlights(String raw) {
@@ -118,6 +119,11 @@ public class RouteRepository {
         d.imageKey(),
         highlights(d.highlights()),
         id);
+  }
+
+  /** 只改图片路径：上传不触碰线路的其他字段，避免与编辑表单互相覆盖。 */
+  public void imagePath(long id, String name) {
+    jdbc.update("UPDATE travel_routes SET image_path=? WHERE id=?", name, id);
   }
 
   public void delete(long id) {
