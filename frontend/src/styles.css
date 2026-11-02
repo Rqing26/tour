@@ -1828,6 +1828,63 @@ svg {
   background: #edf2f8;
   color: #4e5e72;
 }
+/* 上传区块与内置封面分开：内置那组是 6 列网格，上传块是"预览图 + 按钮 + 说明"的横排。 */
+.image-upload {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed #c8d5e4;
+  border-radius: 8px;
+  background: #f7fafd;
+}
+.image-upload > img {
+  width: 132px;
+  height: 74px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+  flex: 0 0 auto;
+  background: #edf2f8;
+}
+.image-upload > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+.image-upload small {
+  color: #5b6b7f;
+  font-size: 11px;
+  line-height: 1.7;
+}
+/* 原生文件框用隐藏的输入 + label 按钮，点按钮等于点输入 */
+.image-upload input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.image-upload label.btn {
+  cursor: pointer;
+  position: relative;
+}
+.image-upload label.btn:focus-within {
+  outline: 2px solid #607ea3;
+  outline-offset: 2px;
+}
+.link-button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: #76664b;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .booking-cover {
   height: 205px;
   position: relative;
