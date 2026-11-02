@@ -46,6 +46,8 @@ abstract class AbstractApiTest {
   @BeforeEach
   void resetDatabase() {
     // 事件表通过外键挂在 bookings 上，必须先清子表，否则重置顺序会被约束挡住。
+    jdbc.update("DELETE FROM chat_messages");
+    jdbc.update("DELETE FROM chat_conversations");
     jdbc.update("DELETE FROM booking_events");
     jdbc.update("DELETE FROM bookings");
     jdbc.update("DELETE FROM travel_routes");
