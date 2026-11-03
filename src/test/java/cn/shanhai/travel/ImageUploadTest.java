@@ -3,20 +3,28 @@ package cn.shanhai.travel;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import cn.shanhai.travel.service.ImageStorageService;
 import com.fasterxml.jackson.databind.JsonNode;
-import java.util.Map;
+import java.io.IOException;
+import java.nio.file.*;
+import java.util.*;
 import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
 /**
- * 线路图片上传的表结构基线（T4.1）与上传接口契约（T4.3）。
+ * 线路图片上传的表结构基线（T4.1）、上传接口契约（T4.3）与接口层安全边界（T4.6）。
  *
  * <p>上传功能把新图落到磁盘、表里只记相对文件名，因此列必须可空：旧线路没有上传过图片，`image_path` 为空要能正常读出。
  * `image_key` 是 6 个固定枚举图片的映射键，保留 `NOT NULL`，前端在 `image_path` 为空时回退到它（C7）。
+ *
+ * <p>T4.6 只从接口层钉"被拒之后什么都没发生"：状态码、磁盘条目数、`image_path` 三者必须同时成立。
+ * 只断 400 而不查磁盘，等于放过"文件已经落盘、库没写"的脏状态。
  */
 class ImageUploadTest extends AbstractApiTest {
+  @Autowired private ImageStorageService images;
 
   /** 只有文件头，够魔数判定用；真实图片的像素内容与"是不是图片"无关。 */
   private static final byte[] PNG_HEAD = {
@@ -117,9 +125,7 @@ class ImageUploadTest extends AbstractApiTest {
     var r = upload(employee, id, png("cover.png"));
 
     assertEquals(403, r.getResponse().getStatus(), r.getResponse().getContentAsString());
-    assertNull(
-        jdbc.queryForObject("SELECT image_path FROM travel_routes WHERE id=?", String.class, id),
-        "被拒的上传不得写库");
+    assertNull(imagePathOf(id), "被拒的上传不得写库");
   }
 
   @Test
@@ -160,5 +166,158 @@ class ImageUploadTest extends AbstractApiTest {
     var r = upload(admin, 999999L, png("cover.png"));
 
     assertEquals(404, r.getResponse().getStatus(), r.getResponse().getContentAsString());
+  }
+
+  /** 上传根目录由 `travel.upload.dir` 决定（测试 profile 指向 target/test-uploads），与静态映射共用同一个解析结果。 */
+  private Path uploadRoot() {
+    return images.root();
+  }
+
+  private long storedFiles() throws IOException {
+    var root = uploadRoot();
+    if (Files.notExists(root)) return 0;
+    try (var list = Files.list(root)) {
+      return list.count();
+    }
+  }
+
+  private String imagePathOf(long id) {
+    return jdbc.queryForObject("SELECT image_path FROM travel_routes WHERE id=?", String.class, id);
+  }
+
+  /**
+   * 被拒的上传必须"三无"：状态码符合预期、磁盘条目数不变、`image_path` 仍为空。
+   *
+   * <p>磁盘只数条目数而不看文件名，是因为服务端用 UUID 命名，被拒时根本不该产生任何条目；
+   * 只断状态码会漏掉"先写盘再校验"的实现。
+   */
+  private void assertRejected(MockMultipartFile file, int status, String message) throws Exception {
+    var admin = login("admin");
+    long id = route(20);
+    long before = storedFiles();
+
+    var r = upload(admin, id, file);
+
+    assertEquals(status, r.getResponse().getStatus(), r.getResponse().getContentAsString());
+    assertTrue(
+        data(r).get("message").asText().contains(message),
+        "错误信息应说明原因，实际为 " + data(r).get("message").asText());
+    assertEquals(before, storedFiles(), "被拒的上传不能在磁盘上留残留文件");
+    assertNull(imagePathOf(id), "被拒的上传不得写库");
+  }
+
+  /** 压缩包改名成 .jpg：扩展名过白名单，但文件头不是任何图片格式。 */
+  @Test
+  void rejectsArchiveRenamedToImage() throws Exception {
+    var zip = new byte[] {'P', 'K', 3, 4, 20, 0, 0, 0, 8, 0, 0, 0};
+
+    assertRejected(
+        new MockMultipartFile("file", "行程封面.jpg", "image/jpeg", zip), 400, "文件内容不是图片");
+  }
+
+  /** 内容是真 PNG 但后缀写成 .jpg：不因为"内容合法"就放行，否则库里后缀与真实格式各说各话。 */
+  @Test
+  void rejectsContentContradictingExtension() throws Exception {
+    assertRejected(png("行程封面.jpg"), 400, "扩展名与实际内容不符");
+  }
+
+  /** 超出 5MB 上限走 413 而不是 400：前端要能区分"太大"与"格式不对"，提示文案不同。 */
+  @Test
+  void rejectsSixMegabyteUpload() throws Exception {
+    var huge = new byte[6 * 1024 * 1024];
+    System.arraycopy(PNG_HEAD, 0, huge, 0, PNG_HEAD.length);
+
+    assertRejected(new MockMultipartFile("file", "huge.png", "image/png", huge), 413, "图片不能超过 5MB");
+  }
+
+  @Test
+  void rejectsEmptyUpload() throws Exception {
+    assertRejected(
+        new MockMultipartFile("file", "empty.png", "image/png", new byte[0]), 400, "请选择要上传的图片");
+  }
+
+  /** 部件名写错（`image` 而非 `file`）按缺参处理，不能落到 500。 */
+  @Test
+  void rejectsRequestWithoutFilePart() throws Exception {
+    var admin = login("admin");
+    long id = route(20);
+    long before = storedFiles();
+
+    var r =
+        mvc.perform(
+                MockMvcRequestBuilders.multipart("/api/routes/" + id + "/image")
+                    .file(new MockMultipartFile("image", "cover.png", "image/png", PNG_HEAD))
+                    .session(admin.session())
+                    .header("X-CSRF-TOKEN", admin.csrf()))
+            .andReturn();
+
+    assertEquals(400, r.getResponse().getStatus(), r.getResponse().getContentAsString());
+    assertTrue(data(r).get("message").asText().contains("请选择要上传的图片"));
+    assertEquals(before, storedFiles());
+    assertNull(imagePathOf(id));
+  }
+
+  /**
+   * 原始文件名里的路径分隔符与 `..` 必须被丢弃。
+   *
+   * <p>服务端只取扩展名、用 UUID 重新命名，所以四种"想跳出去"的写法都应正常上传、且文件落在根目录内；
+   * 反向的写法（直接把原始名拼进路径）会让文件出现在根目录之外，这里的 `getParent()` 断言就是拦它。
+   */
+  @Test
+  void originalFileNameCannotEscapeUploadRoot() throws Exception {
+    var admin = login("admin");
+    long id = route(20);
+    var root = uploadRoot();
+    long before = storedFiles();
+
+    for (var name :
+        List.of(
+            "../../../evil.png", "..\\..\\evil.png", "C:\\Windows\\evil.png", "/etc/evil.png")) {
+      var r = upload(admin, id, png(name));
+      assertEquals(
+          200, r.getResponse().getStatus(), name + " → " + r.getResponse().getContentAsString());
+
+      var stored = data(r).get("imagePath").asText();
+      assertTrue(stored.matches("[0-9a-f]{32}\\.png"), "原始文件名应被丢弃，实际为 " + stored);
+      var path = root.resolve(stored).normalize();
+      assertEquals(root, path.getParent(), "文件必须直接落在上传根目录下，不能借文件名跳出去");
+      assertTrue(Files.exists(path), "上传成功的文件必须真实存在：" + path);
+    }
+
+    assertEquals(before + 4, storedFiles(), "四次上传各落一个文件，目录外不得多出任何条目");
+    assertFalse(Files.exists(root.resolve("evil.png")), "原始文件名不得成为磁盘上的文件名");
+  }
+
+  /** 游客未登录：先被 CSRF 与会话拦下，返回 401 而不是 403，前端据此跳登录页。 */
+  @Test
+  void anonymousCannotUpload() throws Exception {
+    var guest = anonymous();
+    long id = route(20);
+    long before = storedFiles();
+
+    var r =
+        mvc.perform(
+                MockMvcRequestBuilders.multipart("/api/routes/" + id + "/image")
+                    .file(png("cover.png"))
+                    .session(guest.session())
+                    .header("X-CSRF-TOKEN", guest.csrf()))
+            .andReturn();
+
+    assertEquals(401, r.getResponse().getStatus(), r.getResponse().getContentAsString());
+    assertEquals(before, storedFiles());
+    assertNull(imagePathOf(id));
+  }
+
+  @Test
+  void customerCannotUpload() throws Exception {
+    var customer = login("customer");
+    long id = route(20);
+    long before = storedFiles();
+
+    var r = upload(customer, id, png("cover.png"));
+
+    assertEquals(403, r.getResponse().getStatus(), r.getResponse().getContentAsString());
+    assertEquals(before, storedFiles());
+    assertNull(imagePathOf(id));
   }
 }
