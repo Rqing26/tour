@@ -80,3 +80,26 @@ export interface DashboardData {
 }
 export type View = "dashboard" | "routes" | "orders" | "users" | "account";
 export type Notify = (message: string, kind?: "success" | "error") => void;
+
+export interface ChatContact {
+  id: number;
+  displayName: string;
+  role: Role;
+  enabled: boolean;
+}
+export interface Conversation {
+  id: number;
+  peer: ChatContact;
+  lastMessage: string | null;
+  updatedAt: string;
+  unreadCount: number;
+  peerReadId: number;
+}
+export interface ChatMessage {
+  id: number;
+  conversationId: number;
+  senderId: number;
+  content: string;
+  clientId: string;
+  createdAt: string;
+}
