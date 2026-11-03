@@ -9,6 +9,9 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
@@ -45,6 +48,23 @@ public class ApiErrorHandler {
   })
   ResponseEntity<?> malformed(Exception e) {
     return response(HttpStatus.BAD_REQUEST, "输入格式不正确，请检查必填项、日期和数值");
+  }
+
+  /** 容器层的大小拦截到不了服务层，必须在这里翻译，否则前端只能看到 500。 */
+  @ExceptionHandler(MaxUploadSizeExceededException.class)
+  ResponseEntity<?> tooLarge(MaxUploadSizeExceededException e) {
+    return response(HttpStatus.PAYLOAD_TOO_LARGE, "图片不能超过 5MB");
+  }
+
+  @ExceptionHandler(MissingServletRequestPartException.class)
+  ResponseEntity<?> missingPart(MissingServletRequestPartException e) {
+    return response(HttpStatus.BAD_REQUEST, "请选择要上传的图片");
+  }
+
+  /** 静态资源与不存在的路径走这里：没有这个映射会落到通用 500，把"文件不存在"说成"服务出错"。 */
+  @ExceptionHandler(NoResourceFoundException.class)
+  ResponseEntity<?> missingResource(NoResourceFoundException e) {
+    return response(HttpStatus.NOT_FOUND, "请求的资源不存在");
   }
 
   @ExceptionHandler(DataIntegrityViolationException.class)

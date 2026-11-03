@@ -12,7 +12,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { api, errorMessage } from "../api";
-import { dateLabel, money, photo } from "../assets";
+import { cover, dateLabel, money } from "../assets";
 import type { Notify, Route, User, View } from "../types";
 import { useResource } from "../useResource";
 import {
@@ -186,7 +186,7 @@ export default function Routes({
                 aria-label={`查看${route.name}`}
               >
                 <img
-                  src={photo(route.imageKey)}
+                  src={cover(route)}
                   alt={`${route.destination}旅行风景`}
                   loading="lazy"
                 />

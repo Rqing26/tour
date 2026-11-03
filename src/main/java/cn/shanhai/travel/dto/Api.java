@@ -54,7 +54,9 @@ public final class Api {
       int availableSeats,
       boolean active,
       String imageKey,
-      List<String> highlights) {}
+      List<String> highlights,
+      /** 上传图片的存盘文件名；从未上传时为 null，前端回退到 imageKey（C7）。 */
+      String imagePath) {}
 
   public record RouteInput(
       @NotBlank @Size(max = 100) String name,

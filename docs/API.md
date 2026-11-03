@@ -40,6 +40,9 @@
 | POST | `/routes` | 新建线路，body `RouteInput` | ADMIN |
 | PUT | `/routes/{id}` | 修改线路 | ADMIN |
 | DELETE | `/routes/{id}` | 删除线路，有关联订单时 409 | ADMIN |
+| POST | `/routes/{id}/image` | 上传线路封面，`multipart/form-data`，部件名 `file`，返回更新后的 `Route` | ADMIN |
+
+上传规则（T4.3 起）：单张 ≤ 5MB（超出 413），只认 PNG / JPEG / WebP 且**以文件头为准**，扩展名与实际内容不符、内容不是图片都返回 400；存盘名由服务端生成（UUID + 归一后缀），原始文件名不入库也不落盘；线路不存在返回 404。响应里的 `imagePath` 是存盘文件名，为空表示从未上传，前端回退到 `imageKey`（C7）。
 
 ## 用户
 
@@ -103,7 +106,7 @@
 ```text
 User        {id, username, displayName, phone, role, enabled}
 Route       {id, name, destination, description, startDate, durationDays, price,
-             capacity, availableSeats, active, imageKey, highlights}
+             capacity, availableSeats, active, imageKey, highlights, imagePath}
 Order       {id, orderNo, customerId, customerName, customerPhone, employeeId,
              employeeName, routeId, routeName, destination, startDate, durationDays,
              travelerCount, unitPrice, totalAmount, status, createdAt,
@@ -113,6 +116,7 @@ Page<T>     {items: T[], total, page, size}
 ```
 
 - `employeeId` / `employeeName` / `fromStatus` 可为 `null`：分别表示尚未接单、下单建档。
+- `imagePath` 可为 `null`：从未上传过封面的线路（含全部演示数据）保持空值，前端回退 `imageKey`。
 - 密码散列不出现在任何响应里。
 - 新增响应字段必须可空，前端不得假定其存在（C4）。
 

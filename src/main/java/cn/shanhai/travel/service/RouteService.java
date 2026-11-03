@@ -7,15 +7,18 @@ import java.time.LocalDate;
 import java.util.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class RouteService {
   private final RouteRepository routes;
   private final UserService users;
+  private final ImageStorageService images;
 
-  public RouteService(RouteRepository routes, UserService users) {
+  public RouteService(RouteRepository routes, UserService users, ImageStorageService images) {
     this.routes = routes;
     this.users = users;
+    this.images = images;
   }
 
   public List<Api.Route> list(String q, String destination, Boolean active) {
@@ -63,6 +66,19 @@ public class RouteService {
     if (!old.startDate().equals(d.startDate()) && !d.startDate().isAfter(LocalDate.now()))
       throw ApiException.invalid("新出发日期必须在今天之后");
     routes.update(id, d);
+    return routes.find(id).orElseThrow();
+  }
+
+  /**
+   * 替换线路封面。
+   *
+   * <p>先确认线路存在再写盘，避免为一个不存在的 id 留下孤儿文件；落盘与写库同事务，写库失败时文件仍在磁盘上，
+   * 但那只是无引用的孤立文件（不影响数据一致性），反向的"库里有路径、磁盘没文件"不会出现。
+   */
+  @Transactional
+  public Api.Route uploadImage(long id, MultipartFile file) {
+    routes.lock(id).orElseThrow(() -> ApiException.missing("线路不存在"));
+    routes.imagePath(id, images.store(file));
     return routes.find(id).orElseThrow();
   }
 

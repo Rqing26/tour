@@ -7,11 +7,13 @@ import cn.shanhai.travel.dto.Api;
 import cn.shanhai.travel.repository.OrderRepository.Filter;
 import cn.shanhai.travel.repository.OrderRepository.Sort;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -255,6 +257,164 @@ class OrderPaginationTest extends AbstractApiTest {
     assertTrue(Collections.disjoint(first, second), "相邻页不能重复出现同一订单");
     assertEquals(
         ids(orderList(admin)).subList(0, 8), concat(first, second), "两页拼起来应与整表前 8 条一致");
+  }
+
+  /**
+   * 三角色的 {@code total} 各自只统计自己可见的行，不能用整表数糊弄。
+   *
+   * <p>期望值直接来自原生 SQL 计数（独立于 {@code OrderRepository} 的实现），三条口径分别对应
+   * 不限范围、{@code customer_id=?}、{@code status='PENDING' OR employee_id=?}。
+   */
+  @Test
+  void eachRoleGetsTotalScopedToItsOwnVisibility() throws Exception {
+    long customerId = idOf("customer");
+    long employeeId = idOf("employee");
+
+    long adminTotal = envelope(login("admin"), "?page=0&size=100").get("total").asLong();
+    var customerBody = envelope(login("customer"), "?page=0&size=100");
+    var employeeBody = envelope(login("employee"), "?page=0&size=100");
+
+    assertEquals(count("SELECT COUNT(*) FROM bookings"), adminTotal);
+    assertEquals(
+        count("SELECT COUNT(*) FROM bookings WHERE customer_id=?", customerId),
+        customerBody.get("total").asLong());
+    assertEquals(
+        count("SELECT COUNT(*) FROM bookings WHERE status='PENDING' OR employee_id=?", employeeId),
+        employeeBody.get("total").asLong());
+    assertTrue(customerBody.get("total").asLong() < adminTotal, "客户范围必须小于管理员范围");
+    assertTrue(employeeBody.get("total").asLong() < adminTotal, "员工范围必须小于管理员范围");
+
+    customerBody
+        .get("items")
+        .forEach(
+            item ->
+                assertEquals(
+                    customerId, item.get("customerId").asLong(), "客户页里混入了别人的订单"));
+    employeeBody
+        .get("items")
+        .forEach(
+            item -> {
+              boolean pending = "PENDING".equals(item.get("status").asText());
+              boolean mine =
+                  !item.get("employeeId").isNull() && item.get("employeeId").asLong() == employeeId;
+              assertTrue(pending || mine, "员工页里出现了既不待接也不归自己的订单：" + item.get("id"));
+            });
+  }
+
+  /** 越权边界：客户带着大页大小请求也只能拿到自己的行，别人的订单既不在 items 里，也不进 total。 */
+  @Test
+  void customerCannotPageIntoOtherCustomersOrders() throws Exception {
+    var admin = login("admin");
+    newUser(admin, "paging_outsider", "CUSTOMER");
+    long outsiderOrder = createOrder(login("paging_outsider"), route(10), 1);
+    long customerId = idOf("customer");
+
+    var body = envelope(login("customer"), "?page=0&size=100");
+
+    assertFalse(idsOf(body).contains(outsiderOrder), "页大小放大后仍不应越权看到别人的订单");
+    assertEquals(
+        count("SELECT COUNT(*) FROM bookings WHERE customer_id=?", customerId),
+        body.get("total").asLong(),
+        "total 也不能把别人的订单算进来");
+  }
+
+  /** 空结果不是错误：没有任何订单的客户拿到 {@code items=[]}、{@code total=0}，页参数照常回显。 */
+  @Test
+  void customerWithoutOrdersGetsEmptyEnvelope() throws Exception {
+    newUser(login("admin"), "paging_blank", "CUSTOMER");
+
+    var body = envelope(login("paging_blank"), "?page=0&size=20");
+
+    assertEquals(0, body.get("total").asLong());
+    assertEquals(0, body.get("items").size());
+    assertEquals(0, body.get("page").asInt());
+    assertEquals(20, body.get("size").asInt());
+  }
+
+  /** 关键词打空时同样返回空信封，而不是 404 或 null；HTTP 状态仍是 200。 */
+  @Test
+  void keywordWithoutMatchReturnsEmptyEnvelope() throws Exception {
+    var body = envelope(login("admin"), "?page=0&size=10&q=no-such-order-42");
+
+    assertEquals(0, body.get("total").asLong());
+    assertEquals(0, body.get("items").size());
+  }
+
+  /** 页大小只在 1–100 之间生效：0 与负数抬到 1，超过 100 压到 100，回显的是真正生效的值。 */
+  @Test
+  void pageSizeIsNormalizedIntoOneToHundred() throws Exception {
+    var admin = login("admin");
+
+    assertEquals(1, envelope(admin, "?page=0&size=0").get("size").asInt(), "size=0 应抬到 1");
+    assertEquals(1, envelope(admin, "?page=0&size=-3").get("size").asInt(), "负数应抬到 1");
+    assertEquals(100, envelope(admin, "?page=0&size=101").get("size").asInt(), "越界应压到 100");
+    assertEquals(100, envelope(admin, "?page=0&size=100").get("size").asInt(), "边界值 100 原样生效");
+    // 只给 page 不给 size 时用默认 10，并回显默认值而不是 null。
+    assertEquals(10, envelope(admin, "?page=1").get("size").asInt());
+  }
+
+  /** 负页码按第 0 页处理，且与显式 page=0 是同一批数据。 */
+  @Test
+  void negativePageIsTreatedAsFirstPage() throws Exception {
+    var admin = login("admin");
+
+    var negative = envelope(admin, "?page=-7&size=3");
+
+    assertEquals(0, negative.get("page").asInt(), "负页码应归一到 0");
+    assertEquals(idsOf(envelope(admin, "?page=0&size=3")), idsOf(negative));
+  }
+
+  /** 翻过末页：items 为空但 total 不变，页码照原样回显，方便前端判断"没数据了"。 */
+  @Test
+  void pageBeyondEndKeepsTotalAndEmptyItems() throws Exception {
+    var admin = login("admin");
+    long total = envelope(admin, "?page=0&size=10").get("total").asLong();
+
+    var body = envelope(admin, "?page=9999&size=10");
+
+    assertEquals(0, body.get("items").size());
+    assertEquals(total, body.get("total").asLong(), "翻过末页不能改变总数");
+    assertEquals(9999, body.get("page").asInt());
+  }
+
+  /** 升序排序真的下推到了 SQL：首行应是该列的最小值（以原生 SQL 取最小值做对照）。 */
+  @Test
+  void ascendingSortOrdersByWhitelistedColumn() throws Exception {
+    var admin = login("admin");
+
+    var cheapest = envelope(admin, "?page=0&size=1&sort=totalAmount,asc").get("items").get(0);
+
+    assertEquals(
+        0,
+        cheapest
+            .get("totalAmount")
+            .decimalValue()
+            .compareTo(
+                jdbc.queryForObject("SELECT MIN(total_amount) FROM bookings", BigDecimal.class)),
+        "升序首行应是全表最低金额");
+  }
+
+  /** 状态过滤后 total 与行数同口径：命中数小于页容量时两者必须相等，不能一个全局一个当前页。 */
+  @Test
+  void statusFilteredTotalMatchesRowsWhenPageIsLargeEnough() throws Exception {
+    var body = envelope(login("admin"), "?page=0&size=100&status=COMPLETED");
+
+    assertEquals(
+        count("SELECT COUNT(*) FROM bookings WHERE status='COMPLETED'"),
+        body.get("total").asLong());
+    assertEquals(body.get("total").asLong(), body.get("items").size());
+    body.get("items").forEach(item -> assertEquals("COMPLETED", item.get("status").asText()));
+  }
+
+  private long idOf(String username) {
+    Long id =
+        jdbc.queryForObject("SELECT id FROM app_users WHERE username=?", Long.class, username);
+    return Objects.requireNonNull(id);
+  }
+
+  private long count(String sql, Object... args) {
+    Long value = jdbc.queryForObject(sql, Long.class, args);
+    return value == null ? 0 : value;
   }
 
   private JsonNode envelope(Client c, String query) throws Exception {

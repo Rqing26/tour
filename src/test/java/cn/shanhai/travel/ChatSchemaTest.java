@@ -18,10 +18,10 @@ class ChatSchemaTest extends AbstractApiTest {
     assertNotNull(row.get("created_at"));
     assertTrue(jdbc.queryForObject("SELECT COUNT(*) FROM bookings", Long.class) > 0);
     assertEquals(
-        4,
+        5,
         jdbc.queryForObject(
             "SELECT COUNT(*) FROM flyway_schema_history WHERE success=TRUE AND version IN"
-                + " ('1','2','3','4')",
+                + " ('1','2','3','4','4.1')",
             Integer.class));
   }
 
