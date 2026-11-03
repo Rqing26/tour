@@ -78,7 +78,8 @@ export interface DashboardData {
   }[];
   monthlyOrders: { month: string; count: number }[];
 }
-export type View = "dashboard" | "routes" | "orders" | "users" | "account";
+export type View =
+  "dashboard" | "routes" | "orders" | "users" | "account" | "chat";
 export type Notify = (message: string, kind?: "success" | "error") => void;
 
 export interface ChatContact {

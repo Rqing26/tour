@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageCircle,
   Mountain,
   PanelLeftClose,
   Search,
@@ -17,6 +18,8 @@ import {
 import { api, ApiError, errorMessage, refreshCsrf } from "./api";
 import { roleLabels } from "./assets";
 import type { User, View } from "./types";
+import Chat from "./components/Chat";
+import { useChat } from "./useChat";
 import Auth from "./components/Auth";
 import Dashboard from "./components/Dashboard";
 import Routes from "./components/Routes";
@@ -28,6 +31,7 @@ import { Brand, Spinner } from "./components/UI";
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const chat = useChat(user);
   const [initializing, setInitializing] = useState(true);
   const [initError, setInitError] = useState("");
   const [view, setView] = useState<View>("dashboard");
@@ -86,6 +90,7 @@ export default function App() {
       orders: "订单管理",
       users: "用户管理",
       account: "个人账户",
+      chat: "在线咨询",
     };
     document.title = `${user ? titles[view] : "登录"} · 山海行`;
   }, [view, user]);
@@ -163,6 +168,15 @@ export default function App() {
             : "全部订单",
       icon: Ticket,
     },
+    ...(user.role !== "ADMIN"
+      ? [
+          {
+            id: "chat" as View,
+            label: `在线咨询${chat.unread ? ` (${chat.unread})` : ""}`,
+            icon: MessageCircle,
+          },
+        ]
+      : []),
     ...(user.role === "ADMIN"
       ? [{ id: "users" as View, label: "用户管理", icon: UsersRound }]
       : []),
@@ -295,6 +309,9 @@ export default function App() {
           {view === "users" && user.role === "ADMIN" && (
             <Users user={user} notify={notify} />
           )}{" "}
+          {view === "chat" && user.role !== "ADMIN" && (
+            <Chat user={user} chat={chat} />
+          )}
           {view === "account" && (
             <Account user={user} setUser={setUser} notify={notify} />
           )}
