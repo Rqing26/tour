@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createChatRefresh } from "../chatRefresh";
+import { prepareChatFocus } from "../chatFocus";
 import { api, errorMessage } from "../api";
 import { mergeMessages, reconcileMessages } from "../chat";
 import type { ChatMessage, Conversation, User } from "../types";
@@ -34,6 +35,8 @@ export default function ChatThread({
   const [olderBusy, setOlderBusy] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const scroller = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
+  const focusReturn = useRef<ReturnType<typeof prepareChatFocus>>(undefined);
   const pinned = useRef(true);
   const lastLoaded = useRef(0);
   const historyRefresh = useRef<() => Promise<void>>(async () => {});
@@ -44,6 +47,7 @@ export default function ChatThread({
     mounted.current = true;
     return () => {
       mounted.current = false;
+      focusReturn.current?.cancel();
     };
   }, []);
   useEffect(() => {
@@ -139,10 +143,16 @@ export default function ChatThread({
     }
   }
   async function send() {
-    if (!thread.peer.enabled) return;
+    const pending = drafts.get(thread.id);
+    if (!thread.peer.enabled || pending.sending || !pending.content.trim())
+      return;
+    focusReturn.current?.cancel();
+    const focus = prepareChatFocus(composer.current);
+    focusReturn.current = focus;
     const message = await drafts.send(thread.id, (input) =>
       api<ChatMessage>(`${path}/messages`, "POST", input),
     );
+    focus?.finish();
     if (!message) return;
     if (mounted.current) {
       pinned.current = true;
@@ -238,6 +248,7 @@ export default function ChatThread({
         <label htmlFor="chat-draft">输入聊天消息</label>
         <textarea
           id="chat-draft"
+          ref={composer}
           value={draft}
           maxLength={2000}
           rows={3}

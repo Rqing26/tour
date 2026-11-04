@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../api";
 import type { Conversation, User } from "../types";
 import type { ChatState } from "../useChat";
@@ -12,6 +12,8 @@ export default function Chat({ user, chat }: { user: User; chat: ChatState }) {
   const [peerId, setPeerId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const threadButtons = useRef(new Map<number, HTMLButtonElement>());
+  const returnTo = useRef<number | null>(null);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 760px)");
     const changed = () => setMobile(media.matches);
@@ -19,6 +21,14 @@ export default function Chat({ user, chat }: { user: User; chat: ChatState }) {
     media.addEventListener("change", changed);
     return () => media.removeEventListener("change", changed);
   }, []);
+  useEffect(() => {
+    if (mobile && selected === null && returnTo.current !== null) {
+      threadButtons.current
+        .get(returnTo.current)
+        ?.focus({ preventScroll: true });
+      returnTo.current = null;
+    }
+  }, [mobile, selected]);
   const active =
     chat.conversations.find((c) => c.id === selected) ?? chat.conversations[0];
   async function start() {
@@ -96,6 +106,10 @@ export default function Chat({ user, chat }: { user: User; chat: ChatState }) {
           {chat.conversations.map((thread) => (
             <button
               key={thread.id}
+              ref={(element) => {
+                if (element) threadButtons.current.set(thread.id, element);
+                else threadButtons.current.delete(thread.id);
+              }}
               className="chat-thread"
               aria-current={active?.id === thread.id ? "true" : undefined}
               onClick={() => setSelected(thread.id)}
@@ -117,7 +131,10 @@ export default function Chat({ user, chat }: { user: User; chat: ChatState }) {
             user={user}
             thread={active}
             chat={chat}
-            onBack={() => setSelected(null)}
+            onBack={() => {
+              returnTo.current = active.id;
+              setSelected(null);
+            }}
           />
         ) : (
           <div className="empty-state chat-welcome">
