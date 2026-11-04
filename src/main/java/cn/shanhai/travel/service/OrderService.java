@@ -38,6 +38,17 @@ public class OrderService {
   }
 
   /**
+   * 工作台"最近订单"：只取可见范围内最新的几行。
+   *
+   * <p>工作台以前调 {@link #list} 拿全表再 {@code limit(5)}，等于为了 5 行把整张订单表搬进内存。
+   */
+  public List<Api.Order> recent(int limit) {
+    var a = users.current();
+    return orders.page(
+        filter(a, null, null), OrderRepository.Sort.DEFAULT, 0, Math.max(limit, 1));
+  }
+
+  /**
    * 分页查询：页码与页大小都由服务端归一，{@code total} 与当前页共用同一套过滤条件。
    *
    * <p>页大小上限 {@value #MAX_PAGE_SIZE}：前端传多大都不会把整表拉进一次响应。
