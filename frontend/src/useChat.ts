@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createChatDrafts } from "./chatDrafts";
 import { api, errorMessage } from "./api";
 import type { ChatContact, Conversation, User } from "./types";
 
 export function useChat(user: User | null) {
   const userId = user?.id;
   const role = user?.role;
+  const drafts = useMemo(
+    () => (userId && role !== "ADMIN" ? createChatDrafts() : null),
+    [userId, role],
+  );
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [contacts, setContacts] = useState<ChatContact[]>([]);
   const [connection, setConnection] = useState<
@@ -109,6 +114,7 @@ export function useChat(user: User | null) {
 
   return {
     conversations,
+    drafts,
     contacts,
     connection,
     error,

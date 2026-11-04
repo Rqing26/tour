@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { createChatDrafts } from "../src/chatDrafts.ts";
 import { createServer } from "vite";
 
 const server = await createServer({ server: { middlewareMode: true, hmr: false } });
 const { default: Thread } = await server.ssrLoadModule("/src/components/ChatThread.tsx");
 const { default: Chat } = await server.ssrLoadModule("/src/components/Chat.tsx");
 after(() => server.close());
-const chat = { revision: 0, refresh: async () => {} };
+const chat = { drafts: createChatDrafts(), revision: 0, refresh: async () => {} };
 const thread = { id: 1, peer: { displayName: "<顾问>", enabled: true }, unreadCount: 0 };
 test("聊天窗对用户文本转义，发送前提供可访问的标签与空草稿限制", () => {
   const html = renderToStaticMarkup(createElement(Thread, {

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, errorMessage } from "../api";
-import { mergeMessages, reconcileMessages, sendInput } from "../chat";
+import { mergeMessages, reconcileMessages } from "../chat";
 import type { ChatMessage, Conversation, User } from "../types";
 import type { ChatState } from "../useChat";
 
@@ -16,21 +16,26 @@ export default function ChatThread({
   onBack: () => void;
 }) {
   const { revision, refresh } = chat;
+  const drafts = chat.drafts!;
+  const {
+    content: draft,
+    sending,
+    error: sendError,
+  } = useSyncExternalStore(
+    (listener) => drafts.subscribe(thread.id, listener),
+    () => drafts.get(thread.id),
+    () => drafts.get(thread.id),
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [hasOlder, setHasOlder] = useState(false);
   const [olderBusy, setOlderBusy] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState("");
   const [atBottom, setAtBottom] = useState(true);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const lastLoaded = useRef(0);
   const readId = useRef(0);
-  const retry = useRef<ReturnType<typeof sendInput> | null>(null);
-  const sendingRef = useRef(false);
   const mounted = useRef(true);
   const path = `/chat/conversations/${thread.id}`;
   useEffect(() => {
@@ -125,28 +130,19 @@ export default function ChatThread({
     }
   }
   async function send() {
-    if (!draft.trim() || sendingRef.current || !thread.peer.enabled) return;
-    sendingRef.current = true;
-    setSending(true);
-    setSendError("");
-    const input = sendInput(draft, retry.current);
-    retry.current = input;
-    try {
-      const message = await api<ChatMessage>(`${path}/messages`, "POST", input);
-      if (!mounted.current) return;
+    if (!thread.peer.enabled) return;
+    const message = await drafts.send(thread.id, (input) =>
+      api<ChatMessage>(`${path}/messages`, "POST", input),
+    );
+    if (!message) return;
+    if (mounted.current) {
       pinned.current = true;
       setAtBottom(true);
       setMessages((current) => mergeMessages(current, [message]));
-      setDraft("");
-      retry.current = null;
-      void refresh();
-    } catch (e) {
-      if (mounted.current) setSendError(errorMessage(e));
-    } finally {
-      sendingRef.current = false;
-      if (mounted.current) setSending(false);
     }
+    void refresh();
   }
+
   return (
     <section
       className="chat-conversation"
@@ -238,7 +234,7 @@ export default function ChatThread({
           rows={3}
           disabled={sending || !thread.peer.enabled}
           placeholder="说说你的旅行计划…"
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => drafts.edit(thread.id, e.target.value)}
           onKeyDown={(e) => {
             if (
               e.key === "Enter" &&
