@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createChatRefresh } from "../chatRefresh";
 import { api, errorMessage } from "../api";
 import { mergeMessages, reconcileMessages } from "../chat";
 import type { ChatMessage, Conversation, User } from "../types";
@@ -35,6 +36,7 @@ export default function ChatThread({
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const lastLoaded = useRef(0);
+  const historyRefresh = useRef<() => Promise<void>>(async () => {});
   const readId = useRef(0);
   const mounted = useRef(true);
   const path = `/chat/conversations/${thread.id}`;
@@ -46,29 +48,36 @@ export default function ChatThread({
   }, []);
   useEffect(() => {
     let cancelled = false;
-    void reconcileMessages(
-      (beforeId) =>
-        api<ChatMessage[]>(
-          `${path}/messages${beforeId ? `?beforeId=${beforeId}` : ""}`,
-        ),
-      lastLoaded.current,
-    )
-      .then((result) => {
-        if (cancelled) return;
-        if (!lastLoaded.current) setHasOlder(result.hasOlder);
-        lastLoaded.current = result.messages.at(-1)?.id ?? lastLoaded.current;
-        setMessages((current) => mergeMessages(current, result.messages));
-        setError("");
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errorMessage(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    const updates = createChatRefresh(
+      async () => {
+        try {
+          const result = await reconcileMessages((beforeId) => {
+            if (cancelled) throw new Error("会话已关闭");
+            return api<ChatMessage[]>(
+              `${path}/messages${beforeId ? `?beforeId=${beforeId}` : ""}`,
+            );
+          }, lastLoaded.current);
+          if (cancelled) return;
+          if (!lastLoaded.current) setHasOlder(result.hasOlder);
+          lastLoaded.current = result.messages.at(-1)?.id ?? lastLoaded.current;
+          setMessages((current) => mergeMessages(current, result.messages));
+          setError("");
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      },
+      (error) => {
+        if (!cancelled) setError(errorMessage(error));
+      },
+    );
+    historyRefresh.current = updates.refresh;
     return () => {
       cancelled = true;
+      updates.dispose();
     };
+  }, [path]);
+  useEffect(() => {
+    void historyRefresh.current();
   }, [path, revision]);
   useEffect(() => {
     if (pinned.current && scroller.current)

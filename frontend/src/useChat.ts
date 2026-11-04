@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createChatRefresh } from "./chatRefresh";
 import { createChatDrafts } from "./chatDrafts";
 import { api, errorMessage } from "./api";
 import type { ChatContact, Conversation, User } from "./types";
@@ -32,16 +33,8 @@ export function useChat(user: User | null) {
       return;
     }
     let disposed = false;
-    let running = false;
-    let queued = false;
-    const load = async () => {
-      if (running) {
-        queued = true;
-        return;
-      }
-      running = true;
-      do {
-        queued = false;
+    const updates = createChatRefresh(
+      async () => {
         try {
           const [threads, people] = await Promise.all([
             api<Conversation[]>("/chat/conversations"),
@@ -53,14 +46,15 @@ export function useChat(user: User | null) {
             setError("");
             setRevision((n) => n + 1);
           }
-        } catch (error) {
-          if (!disposed) setError(errorMessage(error));
         } finally {
           if (!disposed) setLoading(false);
         }
-      } while (queued && !disposed);
-      running = false;
-    };
+      },
+      (error) => {
+        if (!disposed) setError(errorMessage(error));
+      },
+    );
+    const load = updates.refresh;
     refreshRef.current = load;
     void load();
     let events: EventSource | null = null;
@@ -102,6 +96,7 @@ export function useChat(user: User | null) {
     const fallback = window.setInterval(visible, 30000);
     return () => {
       disposed = true;
+      updates.dispose();
       events?.close();
       window.removeEventListener("offline", offline);
       window.removeEventListener("online", online);
