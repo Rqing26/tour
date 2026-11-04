@@ -1,0 +1,122 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createChatRefresh } from "./chatRefresh";
+import { createChatDrafts } from "./chatDrafts";
+import { api, errorMessage } from "./api";
+import type { ChatContact, Conversation, User } from "./types";
+
+export function useChat(user: User | null) {
+  const userId = user?.id;
+  const role = user?.role;
+  const drafts = useMemo(
+    () => (userId && role !== "ADMIN" ? createChatDrafts() : null),
+    [userId, role],
+  );
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [contacts, setContacts] = useState<ChatContact[]>([]);
+  const [connection, setConnection] = useState<
+    "connecting" | "connected" | "reconnecting"
+  >("connecting");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
+  const refreshRef = useRef<() => Promise<void>>(async () => {});
+  const refresh = useCallback(() => refreshRef.current(), []);
+
+  useEffect(() => {
+    setConversations([]);
+    setContacts([]);
+    setError("");
+    setLoading(true);
+    setConnection("connecting");
+    if (!userId || role === "ADMIN") {
+      refreshRef.current = async () => {};
+      return;
+    }
+    let disposed = false;
+    const updates = createChatRefresh(
+      async () => {
+        try {
+          const [threads, people] = await Promise.all([
+            api<Conversation[]>("/chat/conversations"),
+            api<ChatContact[]>("/chat/contacts"),
+          ]);
+          if (!disposed) {
+            setConversations(threads);
+            setContacts(people);
+            setError("");
+            setRevision((n) => n + 1);
+          }
+        } finally {
+          if (!disposed) setLoading(false);
+        }
+      },
+      (error) => {
+        if (!disposed) setError(errorMessage(error));
+      },
+    );
+    const load = updates.refresh;
+    refreshRef.current = load;
+    void load();
+    let events: EventSource | null = null;
+    const ready = () => {
+      if (disposed) return;
+      setConnection("connected");
+      void load(); // Reconcile history after every reconnection, including missed events.
+    };
+    const connect = () => {
+      events?.close();
+      events = new EventSource("/travel/api/chat/events");
+      events.addEventListener("ready", ready);
+      events.addEventListener("chat", () => void load());
+      events.onerror = () => {
+        if (!disposed) {
+          setConnection("reconnecting");
+          void load();
+        }
+      };
+    };
+    const offline = () => {
+      events?.close();
+      setConnection("reconnecting");
+    };
+    const online = () => {
+      if (!disposed) {
+        connect();
+        void load();
+      }
+    };
+    connect();
+    window.addEventListener("offline", offline);
+    window.addEventListener("online", online);
+    const visible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    window.addEventListener("focus", visible);
+    document.addEventListener("visibilitychange", visible);
+    const fallback = window.setInterval(visible, 30000);
+    return () => {
+      disposed = true;
+      updates.dispose();
+      events?.close();
+      window.removeEventListener("offline", offline);
+      window.removeEventListener("online", online);
+      clearInterval(fallback);
+      window.removeEventListener("focus", visible);
+      document.removeEventListener("visibilitychange", visible);
+      refreshRef.current = async () => {};
+    };
+  }, [userId, role]);
+
+  return {
+    conversations,
+    drafts,
+    contacts,
+    connection,
+    error,
+    loading,
+    revision,
+    refresh,
+    unread: conversations.reduce((sum, thread) => sum + thread.unreadCount, 0),
+  };
+}
+export type ChatState = ReturnType<typeof useChat>;
