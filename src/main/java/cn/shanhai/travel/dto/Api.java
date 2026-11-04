@@ -120,6 +120,32 @@ public final class Api {
 
   public record MonthCount(String month, long count) {}
 
+  /** 月度订单量与营收：{@code revenue} 不含已取消订单，缺月由服务层补 0。 */
+  public record MonthlyReport(String month, long orders, BigDecimal revenue) {}
+
+  /** 员工接单排行：{@code amount} 为该员工经手订单的合计，不含已取消。 */
+  public record EmployeeRank(
+      long employeeId, String employeeName, long orderCount, BigDecimal amount) {}
+
+  /**
+   * 报表汇总。
+   *
+   * <p>{@code scope} 说明这份数字代表谁的口径（ADMIN 全量 / CUSTOMER 自己的 / EMPLOYEE 自己经手的），
+   * 页面据此写标题，避免把员工个人数字当成全团队。
+   */
+  public record ReportSummary(
+      String scope,
+      long totalOrders,
+      long pendingOrders,
+      long assignedOrders,
+      long completedOrders,
+      long cancelledOrders,
+      BigDecimal totalAmount,
+      BigDecimal completedAmount,
+      List<MonthlyReport> monthly,
+      List<PopularRoute> popularRoutes,
+      List<EmployeeRank> employeeRank) {}
+
   public record Dashboard(
       long totalOrders,
       long pendingOrders,
