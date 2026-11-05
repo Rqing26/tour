@@ -92,6 +92,11 @@
 | 方法 | 路径 | 说明 | 权限 |
 | --- | --- | --- | --- |
 | GET | `/dashboard` | 工作台汇总（统计口径见 `架构说明.md`） | 登录 |
+| GET | `/reports/summary?months=6` | 报表汇总（响应 `ReportSummary`） | 登录（按角色收窄） |
+
+`months` 缺省 6，闭区间 1–24，超出按边界生效；`monthly` **总是**回这么多行，没有订单的月份补 0。
+
+统计范围由会话角色决定，没有"看别人"的参数：ADMIN 全量、CUSTOMER 只看自己的订单、EMPLOYEE 只看**已归属自己名下**的订单（待接池没有负责人，不算业绩——与工作台的可见口径不同）。`employeeRank` 只在 ADMIN 时非空，其余角色返回空数组，页面据此隐藏该区块。
 
 ## 运维
 
@@ -113,9 +118,15 @@ Order       {id, orderNo, customerId, customerName, customerPhone, employeeId,
              contactName, contactPhone, remark}
 OrderEvent  {id, bookingId, fromStatus, toStatus, actorId, actorName, actorRole, note, createdAt}
 Page<T>     {items: T[], total, page, size}
+ReportSummary {scope, totalOrders, pendingOrders, assignedOrders, completedOrders,
+               cancelledOrders, totalAmount, completedAmount,
+               monthly: [{month, orders, revenue}],
+               popularRoutes: [{routeId, name, destination, orderCount, travelerCount}],
+               employeeRank: [{employeeId, employeeName, orderCount, amount}]}
 ```
 
 - `employeeId` / `employeeName` / `fromStatus` 可为 `null`：分别表示尚未接单、下单建档。
 - `imagePath` 可为 `null`：从未上传过封面的线路（含全部演示数据）保持空值，前端回退 `imageKey`。
+- `ReportSummary.scope` 是这份数字的口径（`ADMIN` / `CUSTOMER` / `EMPLOYEE`），页面据此写标题，不能把员工个人数字当成全团队。
 - 密码散列不出现在任何响应里。
 - 新增响应字段必须可空，前端不得假定其存在（C4）。
