@@ -79,4 +79,10 @@ export interface DashboardData {
   monthlyOrders: { month: string; count: number }[];
 }
 export type View = "dashboard" | "routes" | "orders" | "users" | "account";
+/** 月度报表行：缺月由服务端补 0，前端不必处理空洞。 */
+export interface MonthlyReport {
+  month: string;
+  orders: number;
+  revenue: number;
+}
 export type Notify = (message: string, kind?: "success" | "error") => void;

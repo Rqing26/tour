@@ -80,7 +80,10 @@ test("柱状等宽且互不重叠，最高柱贴顶、0 值高度为 0", () => {
   assert.equal(bars[1].height, CHART_HEIGHT - CHART_PAD_Y * 2);
   assert.equal(bars[1].y, CHART_PAD_Y);
   assert.ok(bars[1].x > bars[0].x + bars[0].width, "相邻柱之间要留缝");
-  assert.ok(bars[1].x + bars[1].width <= CHART_WIDTH - CHART_PAD_X, "最后一根不能出界");
+  assert.ok(
+    bars[1].x + bars[1].width <= CHART_WIDTH - CHART_PAD_X,
+    "最后一根不能出界",
+  );
 });
 
 test("金额缩写：一万以下取整，一万以上按万显示", () => {
