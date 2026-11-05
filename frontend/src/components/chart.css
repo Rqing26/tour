@@ -1,0 +1,50 @@
+.report-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 23px;
+  margin-bottom: 23px;
+}
+.report-chart {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.report-chart-frame {
+  display: flex;
+  gap: 8px;
+  padding: 0 20px 16px;
+}
+.report-chart-frame .chart-y-labels {
+  width: 30px;
+  padding: 4px 0 30px;
+  text-align: right;
+}
+.report-chart-frame .chart-plot svg {
+  height: 171px;
+}
+.report-bar {
+  fill: var(--forest);
+}
+.legend-bar i {
+  background: var(--forest);
+  border-radius: 2px;
+}
+.report-chart-empty {
+  padding: 26px;
+  margin-bottom: 23px;
+}
+.report-chart-empty h2 {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0;
+}
+.report-chart-empty p {
+  margin: 7px 0 0;
+  font-size: 12px;
+  color: #656a6f;
+}
+@media (max-width: 1000px) {
+  .report-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
