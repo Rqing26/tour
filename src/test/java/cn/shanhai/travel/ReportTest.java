@@ -1,11 +1,14 @@
 package cn.shanhai.travel;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import cn.shanhai.travel.dto.Api;
 import cn.shanhai.travel.model.*;
 import cn.shanhai.travel.repository.ReportRepository.Scope;
 import cn.shanhai.travel.service.ReportService;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import org.junit.jupiter.api.Test;
@@ -241,5 +244,68 @@ class ReportTest extends AbstractApiTest {
     assertEquals(24, reports.summary(accountOf("admin"), 999).monthly().size());
     assertEquals(6, reports.summary(accountOf("admin"), null).monthly().size());
     assertEquals(24, reports.summary(accountOf("admin"), 25).monthly().size(), "上限压到 24 个月");
+  }
+
+  private JsonNode summary(Client c, String query) throws Exception {
+    return data(
+        mvc.perform(get("/api/reports/summary" + query).session(c.session()))
+            .andExpect(status().isOk())
+            .andReturn());
+  }
+
+  /** 报表不向匿名访问开口子：没有会话连字段都拿不到，不能只断"状态码不是 200"。 */
+  @Test
+  void summaryEndpointRequiresLogin() throws Exception {
+    var anon = anonymous();
+    var r = mvc.perform(get("/api/reports/summary").session(anon.session())).andReturn();
+    assertEquals(401, r.getResponse().getStatus(), r.getResponse().getContentAsString());
+    assertFalse(
+        r.getResponse().getContentAsString().contains("totalOrders"),
+        "未登录的响应不应包含任何报表字段");
+  }
+
+  /** 默认窗口 6 个月，最后一行是本月的：窗口从"今天"往回推，而不是从最早订单往前推。 */
+  @Test
+  void summaryEndpointReturnsSixMonthWindowByDefault() throws Exception {
+    var admin = login("admin");
+    var body = summary(admin, "");
+    assertEquals("ADMIN", body.get("scope").asText());
+    assertEquals(6, body.get("monthly").size());
+    assertEquals(
+        jdbc.queryForObject("SELECT COUNT(*) FROM bookings", Long.class),
+        body.get("totalOrders").asLong());
+    assertFalse(body.get("employeeRank").isEmpty(), "管理员应看到团队排行");
+    assertEquals(YearMonth.now().toString(), body.get("monthly").get(5).get("month").asText());
+  }
+
+  /** `months` 由服务端归一：0 抬到 1、99 压到 24，响应回显真正生效的窗口而不是请求值。 */
+  @Test
+  void summaryEndpointClampsMonthWindow() throws Exception {
+    var admin = login("admin");
+    assertEquals(12, summary(admin, "?months=12").get("monthly").size());
+    assertEquals(1, summary(admin, "?months=0").get("monthly").size());
+    assertEquals(24, summary(admin, "?months=99").get("monthly").size());
+  }
+
+  /** 口径只看会话角色，不能由请求参数改写：客户拿不到别人的数字，也看不到团队排行。 */
+  @Test
+  void summaryEndpointScopesBySessionRole() throws Exception {
+    var customer = summary(login("customer"), "");
+    assertEquals("CUSTOMER", customer.get("scope").asText());
+    assertEquals(
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM bookings WHERE customer_id=?", Long.class, accountId("customer")),
+        customer.get("totalOrders").asLong());
+    assertTrue(customer.get("employeeRank").isEmpty(), "客户不需要团队排行");
+
+    var employee = summary(login("employee"), "");
+    assertEquals("EMPLOYEE", employee.get("scope").asText());
+    assertEquals(
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM bookings WHERE employee_id=?",
+            Long.class,
+            accountId("employee")),
+        employee.get("totalOrders").asLong());
+    assertTrue(employee.get("employeeRank").isEmpty(), "员工不参与团队排行");
   }
 }
