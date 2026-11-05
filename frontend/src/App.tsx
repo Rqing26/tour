@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  BarChart3,
   CalendarDays,
   ChevronRight,
   CircleUserRound,
@@ -16,11 +17,13 @@ import {
 } from "lucide-react";
 import { api, ApiError, errorMessage, refreshCsrf } from "./api";
 import { roleLabels } from "./assets";
+import { canViewReports } from "./reportQuery.ts";
 import type { User, View } from "./types";
 import Auth from "./components/Auth";
 import Dashboard from "./components/Dashboard";
 import Routes from "./components/Routes";
 import Orders from "./components/Orders";
+import Reports from "./components/Reports";
 import Users from "./components/Users";
 import Account from "./components/Account";
 import Avatar from "./components/Avatar";
@@ -84,6 +87,7 @@ export default function App() {
       dashboard: "工作台",
       routes: "旅行线路",
       orders: "订单管理",
+      reports: "经营报表",
       users: "用户管理",
       account: "个人账户",
     };
@@ -163,6 +167,9 @@ export default function App() {
             : "全部订单",
       icon: Ticket,
     },
+    ...(canViewReports(user.role)
+      ? [{ id: "reports" as View, label: "经营报表", icon: BarChart3 }]
+      : []),
     ...(user.role === "ADMIN"
       ? [{ id: "users" as View, label: "用户管理", icon: UsersRound }]
       : []),
@@ -292,6 +299,9 @@ export default function App() {
             <Routes user={user} notify={notify} navigate={navigate} />
           )}{" "}
           {view === "orders" && <Orders user={user} notify={notify} />}{" "}
+          {view === "reports" && canViewReports(user.role) && (
+            <Reports user={user} />
+          )}{" "}
           {view === "users" && user.role === "ADMIN" && (
             <Users user={user} notify={notify} />
           )}{" "}

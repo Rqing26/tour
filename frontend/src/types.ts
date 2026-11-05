@@ -78,11 +78,39 @@ export interface DashboardData {
   }[];
   monthlyOrders: { month: string; count: number }[];
 }
-export type View = "dashboard" | "routes" | "orders" | "users" | "account";
+export type View =
+  "dashboard" | "routes" | "orders" | "reports" | "users" | "account";
 /** 月度报表行：缺月由服务端补 0，前端不必处理空洞。 */
 export interface MonthlyReport {
   month: string;
   orders: number;
   revenue: number;
+}
+export interface PopularRoute {
+  routeId: number;
+  name: string;
+  destination: string;
+  orderCount: number;
+  travelerCount: number;
+}
+export interface EmployeeRank {
+  employeeId: number;
+  employeeName: string;
+  orderCount: number;
+  amount: number;
+}
+/** 报表汇总：`scope` 是这份数字的口径，不是请求参数。 */
+export interface ReportSummary {
+  scope: Role;
+  totalOrders: number;
+  pendingOrders: number;
+  assignedOrders: number;
+  completedOrders: number;
+  cancelledOrders: number;
+  totalAmount: number;
+  completedAmount: number;
+  monthly: MonthlyReport[];
+  popularRoutes: PopularRoute[];
+  employeeRank: EmployeeRank[];
 }
 export type Notify = (message: string, kind?: "success" | "error") => void;
