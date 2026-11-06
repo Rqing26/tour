@@ -11,6 +11,7 @@ import cn.shanhai.travel.service.ReportService;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -244,6 +245,107 @@ class ReportTest extends AbstractApiTest {
     assertEquals(24, reports.summary(accountOf("admin"), 999).monthly().size());
     assertEquals(6, reports.summary(accountOf("admin"), null).monthly().size());
     assertEquals(24, reports.summary(accountOf("admin"), 25).monthly().size(), "上限压到 24 个月");
+  }
+
+  /**
+   * 空库不该报错：计数与金额都是 0，月度仍是完整窗口（全 0），排行与热门都空——前端据此显示空态。
+   *
+   * <p>空表上 {@code SUM} 返回 NULL，条件聚合里的 {@code COALESCE} 一旦漏写，这里会直接抛空指针；所以这条用例盯的
+   * 不是"有个 0"，而是聚合在没有任何行时仍然成形。
+   */
+  @Test
+  void emptyDatabaseReportsZerosInsteadOfFailing() throws Exception {
+    clearOrders();
+
+    var totals = reports.totals(Scope.ALL);
+    assertEquals(0, totals.total());
+    assertEquals(0, totals.pending() + totals.assigned() + totals.completed() + totals.cancelled());
+    assertAmount("0", totals.amount());
+    assertAmount("0", totals.completedAmount());
+    assertEquals(
+        0,
+        jdbc.queryForObject("SELECT COALESCE(SUM(total_amount),0) FROM bookings", BigDecimal.class)
+            .signum(),
+        "原生 SQL 在空表上也是 0，两侧口径一致");
+
+    var monthly = reports.monthly(Scope.ALL, 6);
+    assertEquals(6, monthly.size(), "没有订单也要补齐整个窗口，不能返回空列表");
+    assertTrue(
+        monthly.stream().allMatch(m -> m.orders() == 0 && m.revenue().signum() == 0),
+        "窗口内每一行都应是 0 单 0 元");
+    assertTrue(reports.popular(Scope.ALL, 5).isEmpty(), "没有订单就没有热门线路");
+    assertTrue(reports.summary(accountOf("admin"), 6).employeeRank().isEmpty(), "也没有排行");
+
+    // 接口层同样不能 500：前端拿到的是一份"全 0 + 空列表"，画图走空态分支。
+    var body = summary(login("admin"), "");
+    assertEquals(0L, body.get("totalOrders").asLong());
+    assertEquals(0, new BigDecimal(body.get("totalAmount").asText()).signum(), "空库营收应为 0");
+    assertEquals(6, body.get("monthly").size());
+    assertTrue(body.get("employeeRank").isEmpty());
+  }
+
+  /**
+   * 跨年窗口：去年 12 月必须排在次年 1 月之前，年份标签不能丢，营收各归各月。
+   *
+   * <p>窗口长度由"去年 12 月到本月有几个月"算出，所以无论今天是几号，这段窗口都恰好跨过一次年；
+   * 若 SQL 只按 {@code MONTH()} 排序，{@code 01} 会跑到 {@code 12} 前面，这条用例立刻红。
+   */
+  @Test
+  void monthlyWindowKeepsDecemberBeforeJanuaryAcrossYears() {
+    clearOrders();
+    long customer = accountId("customer");
+    long route = route(100);
+    var now = YearMonth.now();
+    var december = YearMonth.of(now.getYear() - 1, 12);
+    var january = YearMonth.of(now.getYear(), 1);
+    int window = (int) ChronoUnit.MONTHS.between(december, now) + 1;
+
+    order(customer, null, route, 1, "COMPLETED", december);
+    order(customer, null, route, 1, "CANCELLED", december);
+    order(customer, null, route, 2, "PENDING", january);
+
+    var monthly = reports.monthly(Scope.ALL, window);
+    assertEquals(window, monthly.size());
+    assertEquals(december.toString(), monthly.getFirst().month(), "窗口第一行应是去年 12 月");
+    assertEquals(january.toString(), monthly.get(1).month(), "紧接着就是次年 1 月");
+
+    var dec = monthly.get(0);
+    assertEquals(2, dec.orders());
+    assertAmount("1200.00", dec.revenue(), "12 月的取消订单只计数不计钱");
+    var jan = monthly.get(1);
+    assertEquals(1, jan.orders());
+    assertAmount("2400.00", jan.revenue());
+
+    int decYear = Integer.parseInt(dec.month().substring(0, 4));
+    int janYear = Integer.parseInt(jan.month().substring(0, 4));
+    assertEquals(decYear + 1, janYear, "两行确实分属相邻两年，而不是同一年内的 12 月与 1 月");
+  }
+
+  /**
+   * 两个范围的差别不止行数：待接池的金额出现在工作台，不出现在个人业绩里。
+   *
+   * <p>只断言"行数差 1"的话，把金额也一起算错仍然通得过；这里直接断两个金额及它们的差。
+   */
+  @Test
+  void dashboardScopeCountsPendingPoolAmountButReportScopeDoesNot() {
+    clearOrders();
+    long customer = accountId("customer");
+    long employee = accountId("employee");
+    long route = route(100);
+
+    order(customer, employee, route, 2, "COMPLETED", YearMonth.now());
+    order(customer, employee, route, 1, "ASSIGNED", YearMonth.now());
+    order(customer, null, route, 2, "PENDING", YearMonth.now());
+
+    var owned = reports.totals(reports.ownedScope(accountOf("employee")));
+    var visible = reports.totals(reports.visibleScope(accountOf("employee")));
+
+    assertEquals(2, owned.total(), "报表只算自己名下");
+    assertAmount("3600.00", owned.amount());
+    assertEquals(3, visible.total(), "工作台还要算上待接池");
+    assertAmount("6000.00", visible.amount());
+    assertAmount(
+        "2400.00", visible.amount().subtract(owned.amount()), "差额恰是待接池那一笔订单的金额");
   }
 
   private JsonNode summary(Client c, String query) throws Exception {
