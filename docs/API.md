@@ -87,6 +87,22 @@
 `total` 是**同一过滤条件**下的全量行数（可见范围 + 状态 + 关键词），不是当前页条数；排序一律以 `id` 倒序兜底，翻页不重不漏。
 三种角色的可见范围在 SQL 里收窄：ADMIN 不限；CUSTOMER 仅 `customer_id=自己`；EMPLOYEE 为 `status='PENDING' OR employee_id=自己`。
 
+## 优惠码
+
+| 方法 | 路径 | 说明 | 权限 |
+| --- | --- | --- | --- |
+| GET | `/coupons?q=&active=` | 优惠码列表（数组），在用的排前面、同组按到期先后 | ADMIN |
+| GET | `/coupons/{id}` | 优惠码详情 | ADMIN |
+| POST | `/coupons` | 新建优惠码，body `CouponInput` | ADMIN |
+| PUT | `/coupons/{id}` | 修改配置，**不改动**已核销次数 | ADMIN |
+| DELETE | `/coupons/{id}` | 删除，已核销过的码返回 409（应改为停用） | ADMIN |
+
+- `discountRate` 是折扣率：`0.80` 表示八折，应收 = 订单原价 × 0.80。取值必须落在 0 与 1 之间（不含端点），否则 400。
+- 码统一大写存储，前端输小写也能命中；大小写视为同一个码，重复录入返回 409。
+- `startsOn` 晚于 `endsOn` 返回 400；`maxUses` 改到小于 `usedCount` 返回 409。
+- 删除只允许从未被核销过的码：订单里存的是折扣快照，删掉码会让历史折扣失去来源。
+- 本接口只管配置。**下单流程目前不接受优惠码**（接入见 T6.6），`BookingInput` 字段保持不变。
+
 ## 报表
 
 | 方法 | 路径 | 说明 | 权限 |
@@ -117,6 +133,9 @@ Order       {id, orderNo, customerId, customerName, customerPhone, employeeId,
              travelerCount, unitPrice, totalAmount, status, createdAt,
              contactName, contactPhone, remark}
 OrderEvent  {id, bookingId, fromStatus, toStatus, actorId, actorName, actorRole, note, createdAt}
+Coupon      {id, code, description, discountRate, minAmount, maxUses, usedCount,
+             startsOn, endsOn, active, createdAt}
+CouponInput {code, description, discountRate, minAmount, maxUses, startsOn, endsOn, active}
 Page<T>     {items: T[], total, page, size}
 ReportSummary {scope, totalOrders, pendingOrders, assignedOrders, completedOrders,
                cancelledOrders, totalAmount, completedAmount,
@@ -127,6 +146,7 @@ ReportSummary {scope, totalOrders, pendingOrders, assignedOrders, completedOrder
 
 - `employeeId` / `employeeName` / `fromStatus` 可为 `null`：分别表示尚未接单、下单建档。
 - `imagePath` 可为 `null`：从未上传过封面的线路（含全部演示数据）保持空值，前端回退 `imageKey`。
+- `Coupon.usedCount` 只由核销累加，管理端编辑不会重置；`Coupon.active` 表示"是否可用"，与"是否过期"分开判断。
 - `ReportSummary.scope` 是这份数字的口径（`ADMIN` / `CUSTOMER` / `EMPLOYEE`），页面据此写标题，不能把员工个人数字当成全团队。
 - 密码散列不出现在任何响应里。
 - 新增响应字段必须可空，前端不得假定其存在（C4）。
