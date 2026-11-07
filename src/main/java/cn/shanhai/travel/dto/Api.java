@@ -146,6 +146,42 @@ public final class Api {
       List<PopularRoute> popularRoutes,
       List<EmployeeRank> employeeRank) {}
 
+  /**
+   * 优惠码配置。
+   *
+   * <p>{@code discountRate} 是折扣率（{@code 0.80} 表示八折），{@code usedCount} / {@code maxUses} 是核销计数，
+   * 校验与减免金额都不在这里计算——配置只描述规则，算钱发生在下单流程。
+   */
+  public record Coupon(
+      long id,
+      String code,
+      String description,
+      BigDecimal discountRate,
+      BigDecimal minAmount,
+      int maxUses,
+      int usedCount,
+      LocalDate startsOn,
+      LocalDate endsOn,
+      boolean active,
+      LocalDateTime createdAt) {}
+
+  /** 优惠码录入：只配规则，减免金额由下单时按订单原价算出，不接受外部传入。 */
+  public record CouponInput(
+      @NotBlank
+          @Pattern(
+              regexp = "[a-zA-Z0-9_-]{3,32}",
+              message = "优惠码须为 3–32 位字母、数字、下划线或连字符")
+          String code,
+      @Size(max = 200) String description,
+      @NotNull @DecimalMin("0.01") @DecimalMax("0.99") @Digits(integer = 1, fraction = 2)
+          BigDecimal discountRate,
+      @NotNull @DecimalMin("0.00") @DecimalMax("9999999.99") @Digits(integer = 7, fraction = 2)
+          BigDecimal minAmount,
+      @Min(1) @Max(100000) int maxUses,
+      @NotNull LocalDate startsOn,
+      @NotNull LocalDate endsOn,
+      @NotNull Boolean active) {}
+
   public record Dashboard(
       long totalOrders,
       long pendingOrders,
