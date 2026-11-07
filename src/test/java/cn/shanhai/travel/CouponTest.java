@@ -37,7 +37,10 @@ class CouponTest extends AbstractApiTest {
         "NO", column("coupons", "used_count").get("is_nullable"), "已用次数从 0 起算，不能为空");
     assertEquals("NO", column("coupons", "starts_on").get("is_nullable"), "有效期起点必填");
     assertEquals("NO", column("coupons", "ends_on").get("is_nullable"), "有效期终点必填");
-    assertEquals("YES", column("coupons", "description").get("is_nullable"), "说明可以不填");
+    // 说明允许不填，但落库统一用空串而不是 NULL，与 bookings.remark 同一约定，前端不必区分两种"空"。
+    var description = column("coupons", "description");
+    assertEquals("NO", description.get("is_nullable"));
+    assertNotNull(description.get("column_default"));
   }
 
   @Test
