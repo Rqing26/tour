@@ -3,11 +3,17 @@ package cn.shanhai.travel;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
+import cn.shanhai.travel.dto.Api;
+import cn.shanhai.travel.repository.CouponRepository;
+import cn.shanhai.travel.service.ApiException;
+import cn.shanhai.travel.service.CouponService;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 
 /**
  * T6 优惠码：表结构（T6.1）与管理端 CRUD（T6.2）的基线。
@@ -17,6 +23,9 @@ import org.junit.jupiter.api.Test;
  * 漏掉 {@code discount_amount} 的默认值，旧订单查询会在下一步直接炸掉。
  */
 class CouponTest extends AbstractApiTest {
+  @Autowired private CouponService couponService;
+  @Autowired private CouponRepository couponRepo;
+
   private Map<String, Object> column(String table, String name) {
     var rows =
         jdbc.queryForList(
@@ -238,5 +247,162 @@ class CouponTest extends AbstractApiTest {
 
     var renamed = ok(admin, "PUT", "/api/coupons/" + first, input("THIRD7", "0.80", 5, true));
     assertEquals("THIRD7", renamed.get("code").asText(), "改成没被占用的码应当成功");
+  }
+
+  // ---- T6.3 折扣计算（纯函数，不碰库） ----
+
+  private static Api.Coupon couponOf(String rate, int maxUses, int usedCount) {
+    var today = LocalDate.now();
+    return new Api.Coupon(
+        1L,
+        "AUTUMN8",
+        "",
+        new BigDecimal(rate),
+        new BigDecimal("0.00"),
+        maxUses,
+        usedCount,
+        today.minusDays(1),
+        today.plusDays(30),
+        true,
+        today.atStartOfDay());
+  }
+
+  @Test
+  void hundredYuanOrderPaysEightyWithEightyPercentCoupon() {
+    var quote = CouponService.compute(couponOf("0.80", 5, 0), new BigDecimal("100.00"));
+
+    assertEquals(0, new BigDecimal("100.00").compareTo(quote.originalAmount()));
+    assertEquals(
+        new BigDecimal("20.00"), quote.discountAmount(), "八折码在原价 100 元上减免 20 元");
+    assertEquals(new BigDecimal("80.00"), quote.payableAmount(), "应收是原价的八成");
+    assertEquals("AUTUMN8", quote.code());
+  }
+
+  @Test
+  void discountRoundsHalfUpToTheCent() {
+    // 12.34 × 0.85 = 10.4890，第三位是 9，必须进位到 10.49；截断会得到 10.48，差一分钱。
+    // 用 double 算的话这个乘积是 10.489000000000001，四舍五入的边界就不可靠了。
+    var quote = CouponService.compute(couponOf("0.85", 5, 0), new BigDecimal("12.34"));
+
+    assertEquals(new BigDecimal("10.49"), quote.payableAmount());
+    assertEquals(new BigDecimal("1.85"), quote.discountAmount());
+  }
+
+  @Test
+  void discountNeverDropsBelowZero() {
+    // 0.01 × 0.99 = 0.0099 进位到 0.01：应收不能低于原价，减免因此是 0 而不是负数。
+    var quote = CouponService.compute(couponOf("0.99", 5, 0), new BigDecimal("0.01"));
+
+    assertEquals(new BigDecimal("0.01"), quote.payableAmount());
+    assertEquals(new BigDecimal("0.00"), quote.discountAmount(), "减免下限为 0，不允许出现负减免");
+  }
+
+  // ---- T6.4 核销校验 + T6.5 条件自增 ----
+
+  private void insertCoupon(
+      String code, String rate, String minAmount, int maxUses, LocalDate from, LocalDate to) {
+    insertCoupon(code, rate, minAmount, maxUses, from, to, true);
+  }
+
+  private void insertCoupon(
+      String code,
+      String rate,
+      String minAmount,
+      int maxUses,
+      LocalDate from,
+      LocalDate to,
+      boolean active) {
+    jdbc.update(
+        "INSERT INTO coupons(code,description,discount_rate,min_amount,max_uses,used_count,starts_on,ends_on,active)"
+            + " VALUES(?,?,?,?,?,0,?,?,?)",
+        code,
+        "",
+        new BigDecimal(rate),
+        new BigDecimal(minAmount),
+        maxUses,
+        java.sql.Date.valueOf(from),
+        java.sql.Date.valueOf(to),
+        active);
+  }
+
+  /** 不存在的码读作 0 次已用：它本来就没占用名额，这样同一句断言能覆盖"码根本没建成"的情形。 */
+  private int usedCount(String code) {
+    var counts =
+        jdbc.queryForList("SELECT used_count FROM coupons WHERE code=?", Integer.class, code);
+    return counts.isEmpty() ? 0 : counts.getFirst();
+  }
+
+  /** 被拒的核销既要给对状态码与可读原因，也不能占用名额——只断异常类型会让"先加次数再校验"照样通过。 */
+  private void assertRejected(String code, String amount, HttpStatus status, String keyword) {
+    var e =
+        assertThrows(
+            ApiException.class, () -> couponService.redeem(code, new BigDecimal(amount)));
+    assertEquals(status, e.status());
+    assertTrue(
+        e.getMessage().contains(keyword), "拒绝原因要能直接告诉用户，实得：" + e.getMessage());
+    assertEquals(0, usedCount(code), "被拒的核销不能占用名额");
+  }
+
+  @Test
+  void redeemNormalizesCodeAndCountsOneUse() {
+    insertCoupon(
+        "AUTUMN8", "0.80", "0.00", 5, LocalDate.now().minusDays(1), LocalDate.now().plusDays(30));
+
+    var quote = couponService.redeem(" autumn8 ", new BigDecimal("100.00"));
+
+    assertEquals("AUTUMN8", quote.code(), "码不区分大小写，回显统一大写");
+    assertEquals(new BigDecimal("20.00"), quote.discountAmount());
+    assertEquals(new BigDecimal("80.00"), quote.payableAmount());
+    assertEquals(1, usedCount("AUTUMN8"), "核销一次就把计数加一");
+  }
+
+  @Test
+  void expiredAndNotYetStartedCouponsAreRejectedWithDistinctReasons() {
+    var today = LocalDate.now();
+    insertCoupon("OLD9", "0.80", "0.00", 5, today.minusDays(10), today.minusDays(1));
+    insertCoupon("SOON9", "0.80", "0.00", 5, today.plusDays(1), today.plusDays(10));
+
+    assertRejected("OLD9", "100.00", HttpStatus.BAD_REQUEST, "已过期");
+    assertRejected("SOON9", "100.00", HttpStatus.BAD_REQUEST, "尚未开始");
+  }
+
+  @Test
+  void inactiveUnknownAndBelowThresholdCouponsAreRejected() {
+    var today = LocalDate.now();
+    insertCoupon("OFF9", "0.80", "0.00", 5, today.minusDays(1), today.plusDays(30), false);
+    insertCoupon("BIG8", "0.80", "200.00", 5, today.minusDays(1), today.plusDays(30));
+
+    assertRejected("OFF9", "500.00", HttpStatus.BAD_REQUEST, "已停用");
+    assertRejected("BIG8", "100.00", HttpStatus.BAD_REQUEST, "未满 200.00");
+    assertRejected("NOSUCH", "100.00", HttpStatus.BAD_REQUEST, "不存在");
+    assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM coupons WHERE code='NOSUCH'", Integer.class));
+  }
+
+  @Test
+  void exhaustedCouponKeepsCounterAtItsLimit() {
+    var today = LocalDate.now();
+    insertCoupon("ONCE9", "0.90", "0.00", 1, today.minusDays(1), today.plusDays(30));
+
+    couponService.redeem("ONCE9", new BigDecimal("100.00"));
+    assertEquals(1, usedCount("ONCE9"));
+
+    var e =
+        assertThrows(
+            ApiException.class, () -> couponService.redeem("ONCE9", new BigDecimal("100.00")));
+    assertEquals(HttpStatus.CONFLICT, e.status(), "次数用尽是状态冲突，不是参数错误");
+    assertTrue(e.getMessage().contains("已达上限"));
+    assertEquals(1, usedCount("ONCE9"), "拒绝之后计数不能被多刷一次");
+  }
+
+  @Test
+  void conditionalConsumeStopsExactlyAtMaxUses() {
+    var today = LocalDate.now();
+    insertCoupon("LIMIT2", "0.90", "0.00", 2, today.minusDays(1), today.plusDays(30));
+    long id = jdbc.queryForObject("SELECT id FROM coupons WHERE code='LIMIT2'", Long.class);
+
+    assertTrue(couponRepo.consume(id));
+    assertTrue(couponRepo.consume(id));
+    assertFalse(couponRepo.consume(id), "第三次条件更新影响 0 行，这才是防超发的判据");
+    assertEquals(2, usedCount("LIMIT2"), "计数停在上限，不会被刷成 3");
   }
 }
