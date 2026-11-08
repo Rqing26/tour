@@ -80,15 +80,18 @@ public class CouponService {
   /**
    * 按订单原价算减免：应收 = 原价 × 折扣率，四舍五入到分；减免 = 原价 − 应收。
    *
-   * <p>金额一律 {@code BigDecimal}，不用 double——{@code 0.80} 在二进制里是无限小数，
-   * 乘出来再四舍五入就会差一分。减免下限为 0：即便折扣率被人为改到 1 以上，也不该出现"用码反而涨价"。
+   * <p>金额一律 {@code BigDecimal}，不用 double：{@code 0.12} 这类值在二进制里是无限小数，
+   * 乘出来的第三位小数会莫名其妙地落在四舍五入的边界上，差一分钱。
+   *
+   * <p>应收用 {@code min(原价)} 兜底：配置表有 {@code discount_rate < 1} 的约束，正常不会越界，
+   * 但人工改库或将来放宽约束时，也不该出现"用码反而涨价"。有了这道兜底，减免天然非负，
+   * 不需要再单独夹一次零——多夹一次就是永远不会执行的分支。
    */
   public static Api.CouponQuote compute(Api.Coupon c, BigDecimal originalAmount) {
     var original = originalAmount.setScale(2, RoundingMode.HALF_UP);
-    var payable = original.multiply(c.discountRate()).setScale(2, RoundingMode.HALF_UP);
-    if (payable.compareTo(original) > 0) payable = original;
-    var discount =
-        original.subtract(payable).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    var payable =
+        original.multiply(c.discountRate()).setScale(2, RoundingMode.HALF_UP).min(original);
+    var discount = original.subtract(payable);
     return new Api.CouponQuote(c.code(), original, discount, payable);
   }
 

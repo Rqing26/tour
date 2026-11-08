@@ -289,12 +289,22 @@ class CouponTest extends AbstractApiTest {
   }
 
   @Test
-  void discountNeverDropsBelowZero() {
-    // 0.01 × 0.99 = 0.0099 进位到 0.01：应收不能低于原价，减免因此是 0 而不是负数。
+  void roundingUpToTheOriginalPriceLeavesNothingToDiscount() {
+    // 0.01 × 0.99 = 0.0099 进位到 0.01，正好等于原价：减免是 0，不能因为"折扣率小于 1"就硬凑出一分钱。
     var quote = CouponService.compute(couponOf("0.99", 5, 0), new BigDecimal("0.01"));
 
     assertEquals(new BigDecimal("0.01"), quote.payableAmount());
-    assertEquals(new BigDecimal("0.00"), quote.discountAmount(), "减免下限为 0，不允许出现负减免");
+    assertEquals(new BigDecimal("0.00"), quote.discountAmount());
+  }
+
+  @Test
+  void rateAboveOneNeverRaisesThePrice() {
+    // ck_coupon_rate 挡住 rate ≥ 1，这条只可能出现在人工改库或约束放宽之后：
+    // 应收夹回原价，减免是 0——用码不能变成涨价，也不能给出负减免。
+    var quote = CouponService.compute(couponOf("1.20", 5, 0), new BigDecimal("100.00"));
+
+    assertEquals(new BigDecimal("100.00"), quote.payableAmount(), "折后应收不得超过原价");
+    assertEquals(new BigDecimal("0.00"), quote.discountAmount(), "这种情况下没有减免可给");
   }
 
   // ---- T6.4 核销校验 + T6.5 条件自增 ----
