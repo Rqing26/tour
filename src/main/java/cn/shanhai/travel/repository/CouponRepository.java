@@ -9,8 +9,8 @@ import org.springframework.stereotype.Repository;
 /**
  * 优惠码配置的读写。
  *
- * <p>核销（{@code used_count} 的条件自增）不在这里：它属于下单流程，只有和订单写入同一个事务才有意义，
- * 见 T6.5。本类只负责管理端的增删改查，以及按码取配置。
+ * <p>管理端只改配置；核销走 {@link #consume}，由下单流程在同一个事务里调用——计数与订单要么一起落地，
+ * 要么一起回滚。
  */
 @Repository
 public class CouponRepository {
@@ -113,6 +113,20 @@ public class CouponRepository {
 
   public void delete(long id) {
     jdbc.update("DELETE FROM coupons WHERE id=?", id);
+  }
+
+  /**
+   * 核销一次：条件自增是防超发的唯一闸门。
+   *
+   * <p>{@code used_count < max_uses} 写在 WHERE 里，由数据库在行锁内判断并自增，所以"还剩 1 次"的码
+   * 被 10 个请求同时打到时，只有一个能拿到影响行数 1。不先 SELECT 再 UPDATE——中间那段窗口正是超发来源。
+   *
+   * @return 影响行数是否为 1；{@code false} 表示次数已被用尽（或码已被删除）
+   */
+  public boolean consume(long id) {
+    return 1
+        == jdbc.update(
+            "UPDATE coupons SET used_count=used_count+1 WHERE id=? AND used_count<max_uses", id);
   }
 
   private static String escapeLike(String value) {
