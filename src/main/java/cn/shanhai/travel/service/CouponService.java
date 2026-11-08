@@ -2,17 +2,19 @@ package cn.shanhai.travel.service;
 
 import cn.shanhai.travel.dto.Api;
 import cn.shanhai.travel.repository.CouponRepository;
+import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 优惠码的管理端规则。
+ * 优惠码规则：管理端只管"配置合不合法"，下单侧管"这张码能不能用在这笔订单上、能减多少"。
  *
- * <p>这里只管"配置本身合不合法"：码唯一、日期窗口不倒挂、次数上限不能被改到已用次数以下。
- * 至于"这张码能不能用在这笔订单上"（有效期、门槛、剩余次数、启用状态）属于核销校验，见 T6.4；
- * 减免金额的计算在下单流程里按订单原价算，不在本类。
+ * <p>配置校验（T6.2）：码归一后唯一、日期窗口不倒挂、上限不得压到已用次数以下。
+ * 核销侧（T6.3–T6.5）：先过有效期/门槛/次数/启用状态四道校验，再用条件自增占掉一次名额，
+ * 最后按订单原价算减免。
  */
 @Service
 public class CouponService {
@@ -58,6 +60,52 @@ public class CouponService {
     // 用过的码不删：订单快照里的折扣需要能对上来源，管理端应改为停用而不是抹掉记录。
     if (c.usedCount() > 0) throw ApiException.conflict("该优惠码已被使用，请改为停用");
     coupons.delete(id);
+  }
+
+  /**
+   * 核销一次并返回试算结果：校验 → 条件自增 → 算钱，三步都在调用方的事务里。
+   *
+   * <p>方法自身不新开事务：下单流程已经带着"锁线路 + 写订单"的事务边界进来，
+   * 这里另起一个会让"次数加了但订单没写进去"变成可能。单独调用时（例如以后做试算接口）
+   * 由 {@code REQUIRED} 兜底开一个。
+   */
+  @Transactional
+  public Api.CouponQuote redeem(String code, BigDecimal originalAmount) {
+    var coupon = usable(code, originalAmount);
+    // 读到的 usedCount 只是提示；真正的闸门是这条条件更新，影响行数 0 说明名额是别人先抢走的。
+    if (!coupons.consume(coupon.id())) throw ApiException.conflict("优惠码使用次数已达上限");
+    return compute(coupon, originalAmount);
+  }
+
+  /**
+   * 按订单原价算减免：应收 = 原价 × 折扣率，四舍五入到分；减免 = 原价 − 应收。
+   *
+   * <p>金额一律 {@code BigDecimal}，不用 double——{@code 0.80} 在二进制里是无限小数，
+   * 乘出来再四舍五入就会差一分。减免下限为 0：即便折扣率被人为改到 1 以上，也不该出现"用码反而涨价"。
+   */
+  public static Api.CouponQuote compute(Api.Coupon c, BigDecimal originalAmount) {
+    var original = originalAmount.setScale(2, RoundingMode.HALF_UP);
+    var payable = original.multiply(c.discountRate()).setScale(2, RoundingMode.HALF_UP);
+    if (payable.compareTo(original) > 0) payable = original;
+    var discount =
+        original.subtract(payable).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    return new Api.CouponQuote(c.code(), original, discount, payable);
+  }
+
+  /** 核销前的四道校验，顺序按"最容易被用户搞错"排：不存在 → 停用 → 未生效/过期 → 门槛 → 次数。 */
+  private Api.Coupon usable(String code, BigDecimal originalAmount) {
+    var wanted = code == null ? "" : code.trim().toUpperCase(Locale.ROOT);
+    if (wanted.isEmpty()) throw ApiException.invalid("请填写优惠码");
+    var c = coupons.byCode(wanted).orElseThrow(() -> ApiException.invalid("优惠码不存在"));
+    if (!c.active()) throw ApiException.invalid("优惠码已停用，无法使用");
+    var today = LocalDate.now();
+    if (today.isBefore(c.startsOn())) throw ApiException.invalid("优惠码尚未开始使用");
+    if (today.isAfter(c.endsOn())) throw ApiException.invalid("优惠码已过期");
+    if (originalAmount.compareTo(c.minAmount()) < 0)
+      throw ApiException.invalid(
+          "订单金额未满 " + c.minAmount().toPlainString() + " 元，不能使用此优惠码");
+    if (c.usedCount() >= c.maxUses()) throw ApiException.conflict("优惠码使用次数已达上限");
+    return c;
   }
 
   /** 码统一大写存储，前端输小写也能命中；金额定到分，避免 0.8 存进去读出来变成 0.8 与 0.80 两种形态。 */

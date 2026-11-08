@@ -182,6 +182,17 @@ public final class Api {
       @NotNull LocalDate endsOn,
       @NotNull Boolean active) {}
 
+  /**
+   * 优惠码试算结果：{@code discountAmount} 是减免额，{@code payableAmount} 是折后应收。
+   *
+   * <p>两个金额都由服务端按配置算出，不接收外部传入（C12）；精度固定两位小数。
+   */
+  public record CouponQuote(
+      String code,
+      BigDecimal originalAmount,
+      BigDecimal discountAmount,
+      BigDecimal payableAmount) {}
+
   public record Dashboard(
       long totalOrders,
       long pendingOrders,
