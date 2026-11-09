@@ -87,4 +87,129 @@ class ReviewTest extends AbstractApiTest {
         "评分上限 5，超出范围的分数会让均分失真");
     assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM reviews", Integer.class));
   }
+
+  // ---- T7.2 提交评价 ----
+
+  private long bookingOf(String username, String status) {
+    return jdbc.queryForList(
+            "SELECT b.id FROM bookings b JOIN app_users u ON u.id=b.customer_id"
+                + " WHERE u.username=? AND b.status=? ORDER BY b.id DESC",
+            Long.class,
+            username,
+            status)
+        .getFirst();
+  }
+
+  private Map<String, Object> review(int rating, String comment) {
+    return comment == null ? Map.of("rating", rating) : Map.of("rating", rating, "comment", comment);
+  }
+
+  private int reviewsOf(long bookingId) {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM reviews WHERE booking_id=?", Integer.class, bookingId);
+  }
+
+  @Test
+  void customerReviewsOwnCompletedOrder() throws Exception {
+    var customer = login("customer");
+    long bookingId = bookingOf("customer", "COMPLETED");
+    long routeId =
+        jdbc.queryForObject("SELECT route_id FROM bookings WHERE id=?", Long.class, bookingId);
+    long customerId =
+        jdbc.queryForObject("SELECT customer_id FROM bookings WHERE id=?", Long.class, bookingId);
+
+    var body = ok(customer, "POST", "/api/orders/" + bookingId + "/review", review(5, "行程安排很顺"));
+
+    assertEquals(bookingId, body.get("bookingId").asLong());
+    assertEquals(routeId, body.get("routeId").asLong(), "线路取自订单，不接受外部传入");
+    assertEquals(customerId, body.get("customerId").asLong());
+    assertEquals(5, body.get("rating").asInt());
+    assertEquals("行程安排很顺", body.get("comment").asText());
+    assertFalse(body.get("createdAt").asText().isBlank(), "评价时间由服务端记录");
+    assertEquals(1, reviewsOf(bookingId));
+  }
+
+  @Test
+  void secondReviewOnSameOrderIsRejected() throws Exception {
+    var customer = login("customer");
+    long bookingId = bookingOf("customer", "COMPLETED");
+    ok(customer, "POST", "/api/orders/" + bookingId + "/review", review(4, "还不错"));
+
+    var again = request(customer, "POST", "/api/orders/" + bookingId + "/review", review(1, "改个一星"));
+    assertEquals(409, again.getResponse().getStatus(), again.getResponse().getContentAsString());
+    assertEquals(1, reviewsOf(bookingId), "被拒的重复评价不能覆盖已有的那条");
+    assertEquals(
+        4,
+        jdbc.queryForObject(
+            "SELECT rating FROM reviews WHERE booking_id=?", Integer.class, bookingId),
+        "先提交的那条保持不变");
+  }
+
+  @Test
+  void unfinishedOrCancelledOrderCannotBeReviewed() throws Exception {
+    var customer = login("customer");
+    for (String status : new String[] {"PENDING", "ASSIGNED", "CANCELLED"}) {
+      long bookingId = bookingOf("customer", status);
+      var r = request(customer, "POST", "/api/orders/" + bookingId + "/review", review(5, "先给好评"));
+      assertEquals(403, r.getResponse().getStatus(), status + " → " + r.getResponse().getContentAsString());
+      assertEquals(0, reviewsOf(bookingId), status + " 订单不得留下评价");
+    }
+  }
+
+  @Test
+  void otherCustomersOrderCannotBeReviewed() throws Exception {
+    var customer = login("customer");
+    long othersBooking = bookingOf("demo_guest", "COMPLETED");
+
+    var r = request(customer, "POST", "/api/orders/" + othersBooking + "/review", review(5, "路过"));
+    assertEquals(403, r.getResponse().getStatus(), r.getResponse().getContentAsString());
+    assertEquals(0, reviewsOf(othersBooking), "评价权只属于下单客户本人");
+  }
+
+  @Test
+  void staffCannotReview() throws Exception {
+    long bookingId = bookingOf("customer", "COMPLETED");
+    for (String username : new String[] {"employee", "admin"}) {
+      var r = request(login(username), "POST", "/api/orders/" + bookingId + "/review", review(5, "代评"));
+      assertEquals(403, r.getResponse().getStatus(), username + " → " + r.getResponse().getContentAsString());
+    }
+    assertEquals(0, reviewsOf(bookingId));
+  }
+
+  @Test
+  void anonymousCannotReview() throws Exception {
+    var guest = anonymous();
+    long bookingId = bookingOf("customer", "COMPLETED");
+    var r = request(guest, "POST", "/api/orders/" + bookingId + "/review", review(5, "游客"));
+    assertEquals(401, r.getResponse().getStatus(), r.getResponse().getContentAsString());
+    assertEquals(0, reviewsOf(bookingId));
+  }
+
+  @Test
+  void ratingOutsideRangeIsRejectedByValidation() throws Exception {
+    var customer = login("customer");
+    long bookingId = bookingOf("customer", "COMPLETED");
+    for (int rating : new int[] {0, 6}) {
+      var r = request(customer, "POST", "/api/orders/" + bookingId + "/review", review(rating, "越界"));
+      assertEquals(400, r.getResponse().getStatus(), rating + " → " + r.getResponse().getContentAsString());
+    }
+    assertEquals(0, reviewsOf(bookingId), "校验失败的请求不得落库");
+  }
+
+  @Test
+  void unknownOrderIsReportedAsMissing() throws Exception {
+    var r = request(login("customer"), "POST", "/api/orders/999999/review", review(5, "幽灵订单"));
+    assertEquals(404, r.getResponse().getStatus(), r.getResponse().getContentAsString());
+  }
+
+  @Test
+  void commentIsOptionalAndStoredAsEmpty() throws Exception {
+    var customer = login("customer");
+    long bookingId = bookingOf("customer", "COMPLETED");
+
+    var body = ok(customer, "POST", "/api/orders/" + bookingId + "/review", review(3, null));
+
+    assertEquals(3, body.get("rating").asInt());
+    assertEquals("", body.get("comment").asText(), "不填文字评价时读作空串，前端不必区分 NULL");
+  }
 }
