@@ -71,13 +71,25 @@ public final class Api {
       @NotBlank @Pattern(regexp = "guilin|yunnan|xinjiang|chengdu|xiamen|hangzhou") String imageKey,
       @NotNull @Size(max = 6) List<@NotBlank @Size(max = 60) String> highlights) {}
 
+  /**
+   * 下单录入。{@code couponCode} 可空：不填表示原价下单，旧前端不必改请求体（C4）。
+   *
+   * <p>减免金额不接受外部传入——它由服务端按优惠码配置算出来（C12）。
+   */
   public record BookingInput(
       @Positive long routeId,
       @Min(1) @Max(20) int travelerCount,
       @NotBlank @Size(max = 60) String contactName,
       @NotBlank @Pattern(regexp = "[+0-9 ()-]{5,25}") String contactPhone,
-      @Size(max = 500) String remark) {}
+      @Size(max = 500) String remark,
+      @Size(max = 32) String couponCode) {}
 
+  /**
+   * 订单。{@code couponCode} / {@code discountAmount} 是下单当时的快照：优惠码配置之后被改写或停用，
+   * 历史订单的减免也不会变。
+   *
+   * <p>两个字段都是新增的（C4）：没用过优惠码的旧订单分别读作 null 与 0，前端按"零减免"展示即可。
+   */
   public record Order(
       long id,
       String orderNo,
@@ -98,7 +110,9 @@ public final class Api {
       LocalDateTime createdAt,
       String contactName,
       String contactPhone,
-      String remark) {}
+      String remark,
+      String couponCode,
+      BigDecimal discountAmount) {}
 
   /** 订单状态变更留痕：{@code fromStatus} 为空表示下单建档，此前没有状态。 */
   public record OrderEvent(

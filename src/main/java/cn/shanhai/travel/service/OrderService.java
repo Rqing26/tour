@@ -3,6 +3,7 @@ package cn.shanhai.travel.service;
 import cn.shanhai.travel.dto.Api;
 import cn.shanhai.travel.model.*;
 import cn.shanhai.travel.repository.*;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
 import org.springframework.stereotype.Service;
@@ -14,16 +15,19 @@ public class OrderService {
   private final RouteRepository routes;
   private final UserService users;
   private final BookingEventRepository events;
+  private final CouponService coupons;
 
   public OrderService(
       OrderRepository orders,
       RouteRepository routes,
       UserService users,
-      BookingEventRepository events) {
+      BookingEventRepository events,
+      CouponService coupons) {
     this.orders = orders;
     this.routes = routes;
     this.users = users;
     this.events = events;
+    this.coupons = coupons;
   }
 
   public List<Api.Order> list(String q, String status) {
@@ -125,6 +129,14 @@ public class OrderService {
     return events.byBooking(id);
   }
 
+  /**
+   * 下单：锁线路 → 核销优惠码 → 写订单与快照 → 记一条建档事件，全在同一个事务里。
+   *
+   * <p>优惠码的核销也在这个事务内（{@code CouponService.redeem} 用 {@code REQUIRED} 加入当前事务）：
+   * 订单写不进去，占掉的那一次名额会跟着回滚，不会出现"次数少了但没有订单"。
+   *
+   * <p>先校验余位再核销：座位不够的订单根本不该占用优惠码名额。
+   */
   @Transactional
   public Api.Order create(Api.BookingInput d) {
     var a = users.lockCurrent();
@@ -135,10 +147,19 @@ public class OrderService {
       throw ApiException.conflict("此线路已下架或已停止预订");
     if (d.travelerCount() > r.availableSeats())
       throw ApiException.conflict("余位不足，当前剩余 " + r.availableSeats() + " 位");
-    long id = orders.create(a.id(), r, d);
+    // 原价是折扣的计算基数，与人数、单价一起在服务端得出；减免金额不接受外部传入（C12）。
+    var original = r.price().multiply(BigDecimal.valueOf(d.travelerCount()));
+    var quote = redeem(d.couponCode(), original);
+    long id = orders.create(a.id(), r, d, quote);
     // 下单即建档：没有上一状态，这条事件是时间线的起点。
     events.append(id, null, "PENDING", a.id(), a.role().name(), "");
     return orders.find(id).orElseThrow();
+  }
+
+  /** 没填优惠码就是原价下单；填了才核销，空串按"没填"处理，前端不必自己抹掉空格。 */
+  private Api.CouponQuote redeem(String code, BigDecimal original) {
+    if (code == null || code.isBlank()) return null;
+    return coupons.redeem(code, original);
   }
 
   @Transactional

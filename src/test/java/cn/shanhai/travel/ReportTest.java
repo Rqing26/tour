@@ -46,7 +46,8 @@ class ReportTest extends AbstractApiTest {
         orders.create(
             customerId,
             route,
-            new Api.BookingInput(routeId, count, "报表联系人", "13800000000", "报表用例"));
+            new Api.BookingInput(routeId, count, "报表联系人", "13800000000", "报表用例", null),
+            null);
     orders.transition(id, status, employeeId);
     jdbc.update(
         "UPDATE bookings SET created_at=? WHERE id=?", at.atDay(15).atTime(10, 0), id);

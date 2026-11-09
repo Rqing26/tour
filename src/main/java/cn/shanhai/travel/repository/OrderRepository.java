@@ -50,7 +50,10 @@ public class OrderRepository {
               r.getTimestamp("created_at").toLocalDateTime(),
               r.getString("contact_name"),
               r.getString("contact_phone"),
-              r.getString("remark"));
+              r.getString("remark"),
+              // 未用优惠码的旧订单读作 null 与 0：迁移时给了默认值，不需要回填（C3）。
+              r.getString("coupon_code"),
+              r.getBigDecimal("discount_amount"));
 
   /** 匹配范围与列表原有的内存过滤一致：订单号、线路名、客户名、联系人和负责人姓名。 */
   private static final String KEYWORD =
@@ -149,24 +152,41 @@ public class OrderRepository {
     return ids.isEmpty() ? Optional.empty() : find(id);
   }
 
-  public long create(long customerId, Api.Route route, Api.BookingInput d) {
+  /**
+   * 写入订单并同时保存折扣快照。
+   *
+   * <p>{@code quote} 为空表示这笔订单没用优惠码：{@code total_amount} 就是"单价 × 人数"，
+   * 两列快照分别写 null 与 0，与旧订单一模一样。
+   *
+   * <p>金额不在这里算：减免由 {@code CouponService} 按配置算出并返回，仓储只负责落库，
+   * 否则同一套折扣规则会出现两份实现。
+   */
+  public long create(long customerId, Api.Route route, Api.BookingInput d, Api.CouponQuote quote) {
     var key = new GeneratedKeyHolder();
+    var total =
+        quote == null
+            ? route.price().multiply(BigDecimal.valueOf(d.travelerCount()))
+            : quote.payableAmount();
+    var discount = quote == null ? BigDecimal.ZERO : quote.discountAmount();
+    String code = quote == null ? null : quote.code();
     jdbc.update(
         c -> {
           var p =
               c.prepareStatement(
                   "INSERT INTO"
-                      + " bookings(customer_id,route_id,traveler_count,unit_price,total_amount,status,contact_name,contact_phone,remark)"
-                      + " VALUES(?,?,?,?,?,'PENDING',?,?,?)",
+                      + " bookings(customer_id,route_id,traveler_count,unit_price,total_amount,status,contact_name,contact_phone,remark,coupon_code,discount_amount)"
+                      + " VALUES(?,?,?,?,?,'PENDING',?,?,?,?,?)",
                   new String[] {"id"});
           p.setLong(1, customerId);
           p.setLong(2, route.id());
           p.setInt(3, d.travelerCount());
           p.setBigDecimal(4, route.price());
-          p.setBigDecimal(5, route.price().multiply(BigDecimal.valueOf(d.travelerCount())));
+          p.setBigDecimal(5, total);
           p.setString(6, d.contactName().trim());
           p.setString(7, d.contactPhone().trim());
           p.setString(8, d.remark() == null ? "" : d.remark().trim());
+          p.setString(9, code);
+          p.setBigDecimal(10, discount);
           return p;
         },
         key);

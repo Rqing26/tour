@@ -155,7 +155,10 @@ public class DemoData implements ApplicationRunner {
         orders.create(
             customer,
             r,
-            new Api.BookingInput(routeId, count, u.displayName(), u.phone(), "演示订单，用于体验业务流程"));
+            new Api.BookingInput(
+                routeId, count, u.displayName(), u.phone(), "演示订单，用于体验业务流程", null),
+            // 演示订单不用优惠码：快照列留空与 0，与真实下单同一套口径。
+            null);
     orders.transition(id, status, employee);
     jdbc.update(
         "UPDATE bookings SET created_at=? WHERE id=?",
