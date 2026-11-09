@@ -207,6 +207,27 @@ public final class Api {
       BigDecimal discountAmount,
       BigDecimal payableAmount) {}
 
+  /**
+   * 线路评价。
+   *
+   * <p>{@code bookingId} 是评价的唯一入口：一笔订单只能评一次，所以它既是外键也是唯一键；
+   * {@code routeId} / {@code customerId} 在下单时就已确定，提交时从订单取值，不读请求体（C12）。
+   */
+  public record Review(
+      long id,
+      long bookingId,
+      long routeId,
+      long customerId,
+      int rating,
+      String comment,
+      LocalDateTime createdAt) {}
+
+  /** 评价录入：只有分数与文字来自客户端，线路、客户与时间都由服务端补齐。 */
+  public record ReviewInput(
+      @Min(value = 1, message = "评分须为 1–5 星") @Max(value = 5, message = "评分须为 1–5 星")
+          int rating,
+      @Size(max = 500) String comment) {}
+
   public record Dashboard(
       long totalOrders,
       long pendingOrders,

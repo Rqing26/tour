@@ -23,7 +23,12 @@ public class ApiException extends RuntimeException {
   }
 
   public static ApiException forbidden() {
-    return new ApiException(HttpStatus.FORBIDDEN, "没有权限执行此操作");
+    return forbidden("没有权限执行此操作");
+  }
+
+  /** 带原因的拒绝：让人知道是哪一条规则不满足，而不是笼统的"没有权限"。 */
+  public static ApiException forbidden(String message) {
+    return new ApiException(HttpStatus.FORBIDDEN, message);
   }
 
   public static ApiException invalid(String message) {

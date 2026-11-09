@@ -11,9 +11,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api")
 public class OrderController {
   private final OrderService orders;
+  private final ReviewService reviews;
 
-  public OrderController(OrderService orders) {
+  public OrderController(OrderService orders, ReviewService reviews) {
     this.orders = orders;
+    this.reviews = reviews;
   }
 
   /**
@@ -64,5 +66,12 @@ public class OrderController {
   @PreAuthorize("hasRole('CUSTOMER')")
   public Api.Order cancel(@PathVariable long id) {
     return orders.cancel(id);
+  }
+
+  /** 评价挂在订单上：一笔订单一条，订单本身就是"评的是哪趟行程"的凭据。 */
+  @PostMapping("/orders/{id}/review")
+  @PreAuthorize("hasRole('CUSTOMER')")
+  public Api.Review review(@PathVariable long id, @Valid @RequestBody Api.ReviewInput d) {
+    return reviews.submit(id, d);
   }
 }
