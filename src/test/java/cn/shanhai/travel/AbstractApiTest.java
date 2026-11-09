@@ -45,7 +45,8 @@ abstract class AbstractApiTest {
 
   @BeforeEach
   void resetDatabase() {
-    // 事件表通过外键挂在 bookings 上，必须先清子表，否则重置顺序会被约束挡住。
+    // 事件表与评价表都通过外键挂在 bookings 上，必须先清子表，否则重置顺序会被约束挡住。
+    jdbc.update("DELETE FROM reviews");
     jdbc.update("DELETE FROM booking_events");
     jdbc.update("DELETE FROM bookings");
     // 优惠码没有外键指向订单，订单删完再清，顺序无所谓；放在这里保证每个用例从零开始。
