@@ -1,20 +1,28 @@
 package cn.shanhai.travel;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import cn.shanhai.travel.dto.Api;
 import cn.shanhai.travel.repository.CouponRepository;
+import cn.shanhai.travel.repository.OrderRepository;
 import cn.shanhai.travel.service.ApiException;
 import cn.shanhai.travel.service.CouponService;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 /**
  * T6 优惠码：表结构（T6.1）与管理端 CRUD（T6.2）的基线。
@@ -26,6 +34,9 @@ import org.springframework.http.HttpStatus;
 class CouponTest extends AbstractApiTest {
   @Autowired private CouponService couponService;
   @Autowired private CouponRepository couponRepo;
+
+  /** 用 spy 包住真实仓储：平时照常写库，只在验证回滚时让写入失败。 */
+  @MockitoSpyBean private OrderRepository spyOrders;
 
   private Map<String, Object> column(String table, String name) {
     var rows =
@@ -561,5 +572,155 @@ class CouponTest extends AbstractApiTest {
         "历史总价同样保持不变");
     assertEquals("AUTUMN8", jdbc.queryForObject(
         "SELECT coupon_code FROM bookings WHERE id=?", String.class, orderId));
+  }
+
+  // ---- T6.8 并发超发、金额精度、门槛不足与事务回滚 ----
+
+  /** 一个"同时起跑"的批量请求：每个线程拿到自己的序号，方便取各自的会话与请求体。 */
+  @FunctionalInterface
+  private interface Attempt {
+    int run(int index) throws Exception;
+  }
+
+  private List<Integer> attempts(int count, Attempt attempt) throws Exception {
+    try (var pool = Executors.newFixedThreadPool(count)) {
+      var ready = new CountDownLatch(count);
+      var go = new CountDownLatch(1);
+      var futures = new ArrayList<Future<Integer>>();
+      for (int i = 0; i < count; i++) {
+        int index = i;
+        futures.add(
+            pool.submit(
+                () -> {
+                  ready.countDown();
+                  go.await();
+                  return attempt.run(index);
+                }));
+      }
+      assertTrue(ready.await(5, TimeUnit.SECONDS), "线程未能在 5 秒内全部就绪");
+      go.countDown();
+      var results = new ArrayList<Integer>();
+      for (var future : futures) results.add(future.get(30, TimeUnit.SECONDS));
+      return results;
+    }
+  }
+
+  private static long countOf(List<Integer> statuses, int wanted) {
+    return statuses.stream().filter(s -> s == wanted).count();
+  }
+
+  @Test
+  void tenConcurrentRedemptionsYieldExactlyFiveSuccesses() throws Exception {
+    var today = LocalDate.now();
+    insertCoupon("RUSH9", "0.90", "0.00", 5, today.minusDays(1), today.plusDays(30));
+
+    var statuses =
+        attempts(
+            10,
+            i -> {
+              try {
+                couponService.redeem("RUSH9", new BigDecimal("100.00"));
+                return 200;
+              } catch (ApiException e) {
+                return e.status().value();
+              }
+            });
+
+    assertEquals(5, countOf(statuses, 200), "max_uses=5 的码在 10 个并发核销下只能成功 5 次");
+    assertEquals(5, countOf(statuses, 409), "其余请求按状态冲突拒绝，不能是 500");
+    assertEquals(5, usedCount("RUSH9"), "计数停在上限");
+  }
+
+  @Test
+  void tenConcurrentOrdersCannotOverspendCoupon() throws Exception {
+    var today = LocalDate.now();
+    insertCoupon("RUSH8", "0.80", "0.00", 5, today.minusDays(1), today.plusDays(30));
+    long route = pricedRoute("100.00", 50);
+    // 每个下单请求都要自己的会话与 CSRF 令牌：同一个会话跨线程用会被安全链判成串号。
+    var clients = new ArrayList<Client>();
+    for (int i = 0; i < 10; i++) clients.add(login("customer"));
+    int before = orderCount();
+
+    var statuses =
+        attempts(
+            10,
+            i ->
+                request(clients.get(i), "POST", "/api/orders", bookingWithCoupon(route, 1, "RUSH8"))
+                    .getResponse()
+                    .getStatus());
+
+    assertEquals(5, countOf(statuses, 200), "10 个并发下单只能有 5 笔用上这张码");
+    assertEquals(5, countOf(statuses, 409), "抢不到名额的请求返回 409，不能让数据库报 500");
+    assertEquals(
+        before + 5, orderCount(), "被拒的请求不能留下订单，也不能把整张表写乱");
+    assertEquals(
+        5,
+        jdbc.queryForObject(
+            "SELECT COUNT(*) FROM bookings WHERE coupon_code='RUSH8'", Integer.class),
+        "订单数与占用的名额必须一一对应");
+    assertEquals(5, usedCount("RUSH8"));
+  }
+
+  @Test
+  void orderWriteFailureRollsBackCouponUsage() throws Exception {
+    var admin = login("admin");
+    create(admin, "AUTUMN8", "0.80", 5);
+    long route = pricedRoute("100.00", 10);
+    var customer = login("customer");
+    int before = orderCount();
+    doThrow(new IllegalStateException("模拟订单写入失败"))
+        .when(spyOrders)
+        .create(anyLong(), any(), any(), any());
+    try {
+      var failed = request(customer, "POST", "/api/orders", bookingWithCoupon(route, 1, "AUTUMN8"));
+      assertEquals(500, failed.getResponse().getStatus(), "写入失败要如实报错，不能假装成功");
+    } finally {
+      reset(spyOrders);
+    }
+
+    assertEquals(0, usedCount("AUTUMN8"), "订单没写成，占掉的名额必须跟着回滚");
+    assertEquals(before, orderCount());
+  }
+
+  @Test
+  void orderStoresDiscountedAmountsRoundedToTheCent() throws Exception {
+    var today = LocalDate.now();
+    // 12.34 × 0.85 = 10.489：落库必须进位到 10.49，截断会得到 10.48。
+    insertCoupon("PREC85", "0.85", "0.00", 5, today.minusDays(1), today.plusDays(30));
+    long route = pricedRoute("12.34", 10);
+
+    var created =
+        ok(login("customer"), "POST", "/api/orders", bookingWithCoupon(route, 1, "PREC85"));
+    long orderId = created.get("id").asLong();
+
+    assertEquals(
+        0,
+        new BigDecimal("10.49").compareTo(created.get("totalAmount").decimalValue()),
+        "响应里的总价必须与算出来的应收一致");
+    assertEquals(
+        0,
+        new BigDecimal("1.85").compareTo(created.get("discountAmount").decimalValue()),
+        "减免 = 原价 − 应收，同样进位到分");
+    assertEquals(
+        0, new BigDecimal("10.49").compareTo(stored("total_amount", orderId)), "落库金额不能差一分");
+    assertEquals(0, new BigDecimal("1.85").compareTo(stored("discount_amount", orderId)));
+  }
+
+  @Test
+  void belowThresholdCouponRejectsOrderWithReadableReason() throws Exception {
+    var today = LocalDate.now();
+    insertCoupon("BIG8", "0.80", "200.00", 5, today.minusDays(1), today.plusDays(30));
+    long route = pricedRoute("100.00", 10);
+    var customer = login("customer");
+    int before = orderCount();
+
+    var rejected = request(customer, "POST", "/api/orders", bookingWithCoupon(route, 1, "BIG8"));
+
+    assertEquals(400, rejected.getResponse().getStatus());
+    assertTrue(
+        data(rejected).get("message").asText().contains("未满 200.00"),
+        "提示要带上门槛金额，用户才知道差多少，实得：" + data(rejected).get("message").asText());
+    assertEquals(before, orderCount());
+    assertEquals(0, usedCount("BIG8"));
   }
 }
