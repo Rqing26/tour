@@ -10,6 +10,7 @@ import cn.shanhai.travel.service.CouponService;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -414,5 +415,151 @@ class CouponTest extends AbstractApiTest {
     assertTrue(couponRepo.consume(id));
     assertFalse(couponRepo.consume(id), "第三次条件更新影响 0 行，这才是防超发的判据");
     assertEquals(2, usedCount("LIMIT2"), "计数停在上限，不会被刷成 3");
+  }
+
+  // ---- T6.6 下单接入 + 订单快照 ----
+
+  /** 按指定单价造一条线路：金额用例要整百、要小数，靠固定单价算不出来。 */
+  private long pricedRoute(String price, int capacity) {
+    return routes.create(
+        new Api.RouteInput(
+            "折扣线路",
+            "测试目的地",
+            "用于验证优惠码金额",
+            LocalDate.now().plusDays(40),
+            3,
+            new BigDecimal(price),
+            capacity,
+            true,
+            "guilin",
+            List.of("测试景点")));
+  }
+
+  private Map<String, Object> bookingWithCoupon(long routeId, int count, String code) {
+    return Map.of(
+        "routeId",
+        routeId,
+        "travelerCount",
+        count,
+        "contactName",
+        "折扣联系人",
+        "contactPhone",
+        "13800000000",
+        "remark",
+        "优惠码用例",
+        "couponCode",
+        code);
+  }
+
+  private int orderCount() {
+    return jdbc.queryForObject("SELECT COUNT(*) FROM bookings", Integer.class);
+  }
+
+  private BigDecimal stored(String column, long orderId) {
+    return jdbc.queryForObject(
+        "SELECT " + column + " FROM bookings WHERE id=?", BigDecimal.class, orderId);
+  }
+
+  @Test
+  void orderWithCouponStoresDiscountedSnapshot() throws Exception {
+    var admin = login("admin");
+    create(admin, "AUTUMN8", "0.80", 5);
+    long route = pricedRoute("100.00", 10);
+
+    var created =
+        ok(login("customer"), "POST", "/api/orders", bookingWithCoupon(route, 1, "autumn8"));
+
+    assertEquals("AUTUMN8", created.get("couponCode").asText(), "码按大写快照，与配置表同一形态");
+    assertEquals(
+        0,
+        new BigDecimal("20.00").compareTo(created.get("discountAmount").decimalValue()),
+        "八折码在 100 元订单上减免 20 元");
+    assertEquals(
+        0,
+        new BigDecimal("80.00").compareTo(created.get("totalAmount").decimalValue()),
+        "订单总价是折后应收，不是原价");
+    assertEquals(
+        0,
+        new BigDecimal("100.00").compareTo(created.get("unitPrice").decimalValue()),
+        "单价仍是线路原价，折后金额只体现在总额与减免两列");
+    assertEquals(1, usedCount("AUTUMN8"), "下单成功即占用一次名额");
+  }
+
+  @Test
+  void orderWithoutCouponKeepsFullPriceAndEmptySnapshot() throws Exception {
+    long route = pricedRoute("100.00", 10);
+
+    var created = ok(login("customer"), "POST", "/api/orders", booking(route, 2));
+
+    assertTrue(created.get("couponCode").isNull(), "不填优惠码时快照列为空");
+    assertEquals(
+        0,
+        BigDecimal.ZERO.compareTo(created.get("discountAmount").decimalValue()),
+        "零减免而不是缺字段，前端不必判断两种「空」");
+    assertEquals(
+        0,
+        new BigDecimal("200.00").compareTo(created.get("totalAmount").decimalValue()),
+        "不用优惠码时总价口径与改动前一致（C4）");
+  }
+
+  @Test
+  void expiredCouponRejectsOrderWithoutWritingAnything() throws Exception {
+    var today = LocalDate.now();
+    insertCoupon("OLD9", "0.80", "0.00", 5, today.minusDays(10), today.minusDays(1));
+    long route = pricedRoute("100.00", 10);
+    var customer = login("customer");
+    int before = orderCount();
+
+    var rejected = request(customer, "POST", "/api/orders", bookingWithCoupon(route, 1, "OLD9"));
+
+    assertEquals(400, rejected.getResponse().getStatus());
+    assertTrue(
+        data(rejected).get("message").asText().contains("已过期"),
+        "拒绝原因要能直接给用户看，实得：" + data(rejected).get("message").asText());
+    assertEquals(before, orderCount(), "优惠码被拒时不能留下半张订单");
+    assertEquals(0, usedCount("OLD9"), "被拒的下单不能占用名额");
+  }
+
+  @Test
+  void exhaustedCouponRejectsOrderWithConflict() throws Exception {
+    var today = LocalDate.now();
+    insertCoupon("ONCE9", "0.90", "0.00", 1, today.minusDays(1), today.plusDays(30));
+    jdbc.update("UPDATE coupons SET used_count=1 WHERE code='ONCE9'");
+    long route = pricedRoute("100.00", 10);
+    var customer = login("customer");
+    int before = orderCount();
+
+    assertEquals(
+        409,
+        request(customer, "POST", "/api/orders", bookingWithCoupon(route, 1, "ONCE9"))
+            .getResponse()
+            .getStatus(),
+        "次数用尽是状态冲突，不是参数错误");
+    assertEquals(before, orderCount());
+    assertEquals(1, usedCount("ONCE9"));
+  }
+
+  @Test
+  void changingCouponConfigKeepsHistoricalDiscount() throws Exception {
+    var admin = login("admin");
+    long couponId = create(admin, "AUTUMN8", "0.80", 5).get("id").asLong();
+    long route = pricedRoute("100.00", 10);
+    long orderId =
+        ok(login("customer"), "POST", "/api/orders", bookingWithCoupon(route, 1, "AUTUMN8"))
+            .get("id")
+            .asLong();
+
+    ok(admin, "PUT", "/api/coupons/" + couponId, input("AUTUMN8", "0.50", 5, true));
+
+    assertEquals(
+        0,
+        new BigDecimal("20.00").compareTo(stored("discount_amount", orderId)),
+        "改配置不能回头改写历史订单：减免是下单当时的快照");
+    assertEquals(
+        0,
+        new BigDecimal("80.00").compareTo(stored("total_amount", orderId)),
+        "历史总价同样保持不变");
+    assertEquals("AUTUMN8", jdbc.queryForObject(
+        "SELECT coupon_code FROM bookings WHERE id=?", String.class, orderId));
   }
 }
