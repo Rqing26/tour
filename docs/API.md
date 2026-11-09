@@ -101,7 +101,17 @@
 - 码统一大写存储，前端输小写也能命中；大小写视为同一个码，重复录入返回 409。
 - `startsOn` 晚于 `endsOn` 返回 400；`maxUses` 改到小于 `usedCount` 返回 409。
 - 删除只允许从未被核销过的码：订单里存的是折扣快照，删掉码会让历史折扣失去来源。
-- 本接口只管配置。**下单流程目前不接受优惠码**（接入见 T6.6），`BookingInput` 字段保持不变。
+
+下单时把码填进 `BookingInput.couponCode`（可空，`POST /orders`）：
+
+```json
+{ "routeId": 3, "travelerCount": 2, "contactName": "张明", "contactPhone": "13800000000",
+  "remark": "", "couponCode": "AUTUMN8" }
+```
+
+- 码不区分大小写，快照里存大写形态；不填或留空按原价下单，行为与 T6.6 之前完全一致。
+- 校验不通过直接拒绝下单、不落订单：码不存在/已停用/未开始/已过期/未满门槛 → 400（`message` 说明是哪一条），次数用尽 → 409。
+- 通过后订单 `totalAmount` 写折后应收、`discountAmount` 写减免额，并占用一次名额；名额与订单在同一个事务里，订单写失败会一起回滚。
 
 ## 报表
 
@@ -131,7 +141,8 @@ Route       {id, name, destination, description, startDate, durationDays, price,
 Order       {id, orderNo, customerId, customerName, customerPhone, employeeId,
              employeeName, routeId, routeName, destination, startDate, durationDays,
              travelerCount, unitPrice, totalAmount, status, createdAt,
-             contactName, contactPhone, remark}
+             contactName, contactPhone, remark, couponCode, discountAmount}
+BookingInput {routeId, travelerCount, contactName, contactPhone, remark, couponCode?}
 OrderEvent  {id, bookingId, fromStatus, toStatus, actorId, actorName, actorRole, note, createdAt}
 Coupon      {id, code, description, discountRate, minAmount, maxUses, usedCount,
              startsOn, endsOn, active, createdAt}
@@ -146,6 +157,8 @@ ReportSummary {scope, totalOrders, pendingOrders, assignedOrders, completedOrder
 
 - `employeeId` / `employeeName` / `fromStatus` 可为 `null`：分别表示尚未接单、下单建档。
 - `imagePath` 可为 `null`：从未上传过封面的线路（含全部演示数据）保持空值，前端回退 `imageKey`。
+- `couponCode` 可为 `null`：没用优惠码的订单（含全部历史订单）读作空值，`discountAmount` 同时为 `0.00`。
+- `totalAmount` 是**折后应收**（未用优惠码时等于"单价 × 人数"），`unitPrice` 始终是线路原价。
 - `Coupon.usedCount` 只由核销累加，管理端编辑不会重置；`Coupon.active` 表示"是否可用"，与"是否过期"分开判断。
 - `ReportSummary.scope` 是这份数字的口径（`ADMIN` / `CUSTOMER` / `EMPLOYEE`），页面据此写标题，不能把员工个人数字当成全团队。
 - 密码散列不出现在任何响应里。
