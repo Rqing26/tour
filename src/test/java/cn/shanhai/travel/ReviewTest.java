@@ -2,9 +2,11 @@ package cn.shanhai.travel;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.web.servlet.MvcResult;
 
 /**
  * T7 评价：表结构（T7.1）与提交规则（T7.2）的基线。
@@ -101,12 +103,24 @@ class ReviewTest extends AbstractApiTest {
   }
 
   private Map<String, Object> review(int rating, String comment) {
-    return comment == null ? Map.of("rating", rating) : Map.of("rating", rating, "comment", comment);
+    if (comment == null) return Map.of("rating", rating);
+    return Map.of("rating", rating, "comment", comment);
   }
 
   private int reviewsOf(long bookingId) {
     return jdbc.queryForObject(
         "SELECT COUNT(*) FROM reviews WHERE booking_id=?", Integer.class, bookingId);
+  }
+
+  private MvcResult submit(Client c, long bookingId, int rating, String comment) throws Exception {
+    return request(c, "POST", "/api/orders/" + bookingId + "/review", review(rating, comment));
+  }
+
+  /** 成功提交并返回响应体：路径拼装只写一次，用例里只剩"谁、对哪笔、给几分"。 */
+  private JsonNode reviewed(Client c, long bookingId, int rating, String comment) throws Exception {
+    var r = submit(c, bookingId, rating, comment);
+    assertEquals(200, r.getResponse().getStatus(), r.getResponse().getContentAsString());
+    return data(r);
   }
 
   @Test
@@ -118,7 +132,7 @@ class ReviewTest extends AbstractApiTest {
     long customerId =
         jdbc.queryForObject("SELECT customer_id FROM bookings WHERE id=?", Long.class, bookingId);
 
-    var body = ok(customer, "POST", "/api/orders/" + bookingId + "/review", review(5, "行程安排很顺"));
+    var body = reviewed(customer, bookingId, 5, "行程安排很顺");
 
     assertEquals(bookingId, body.get("bookingId").asLong());
     assertEquals(routeId, body.get("routeId").asLong(), "线路取自订单，不接受外部传入");
@@ -133,9 +147,9 @@ class ReviewTest extends AbstractApiTest {
   void secondReviewOnSameOrderIsRejected() throws Exception {
     var customer = login("customer");
     long bookingId = bookingOf("customer", "COMPLETED");
-    ok(customer, "POST", "/api/orders/" + bookingId + "/review", review(4, "还不错"));
+    reviewed(customer, bookingId, 4, "还不错");
 
-    var again = request(customer, "POST", "/api/orders/" + bookingId + "/review", review(1, "改个一星"));
+    var again = submit(customer, bookingId, 1, "改个一星");
     assertEquals(409, again.getResponse().getStatus(), again.getResponse().getContentAsString());
     assertEquals(1, reviewsOf(bookingId), "被拒的重复评价不能覆盖已有的那条");
     assertEquals(
@@ -150,8 +164,9 @@ class ReviewTest extends AbstractApiTest {
     var customer = login("customer");
     for (String status : new String[] {"PENDING", "ASSIGNED", "CANCELLED"}) {
       long bookingId = bookingOf("customer", status);
-      var r = request(customer, "POST", "/api/orders/" + bookingId + "/review", review(5, "先给好评"));
-      assertEquals(403, r.getResponse().getStatus(), status + " → " + r.getResponse().getContentAsString());
+      var r = submit(customer, bookingId, 5, "先给好评");
+      assertEquals(
+          403, r.getResponse().getStatus(), status + " → " + r.getResponse().getContentAsString());
       assertEquals(0, reviewsOf(bookingId), status + " 订单不得留下评价");
     }
   }
@@ -161,7 +176,7 @@ class ReviewTest extends AbstractApiTest {
     var customer = login("customer");
     long othersBooking = bookingOf("demo_guest", "COMPLETED");
 
-    var r = request(customer, "POST", "/api/orders/" + othersBooking + "/review", review(5, "路过"));
+    var r = submit(customer, othersBooking, 5, "路过");
     assertEquals(403, r.getResponse().getStatus(), r.getResponse().getContentAsString());
     assertEquals(0, reviewsOf(othersBooking), "评价权只属于下单客户本人");
   }
@@ -170,8 +185,9 @@ class ReviewTest extends AbstractApiTest {
   void staffCannotReview() throws Exception {
     long bookingId = bookingOf("customer", "COMPLETED");
     for (String username : new String[] {"employee", "admin"}) {
-      var r = request(login(username), "POST", "/api/orders/" + bookingId + "/review", review(5, "代评"));
-      assertEquals(403, r.getResponse().getStatus(), username + " → " + r.getResponse().getContentAsString());
+      var r = submit(login(username), bookingId, 5, "代评");
+      assertEquals(
+          403, r.getResponse().getStatus(), username + " → " + r.getResponse().getContentAsString());
     }
     assertEquals(0, reviewsOf(bookingId));
   }
@@ -180,7 +196,7 @@ class ReviewTest extends AbstractApiTest {
   void anonymousCannotReview() throws Exception {
     var guest = anonymous();
     long bookingId = bookingOf("customer", "COMPLETED");
-    var r = request(guest, "POST", "/api/orders/" + bookingId + "/review", review(5, "游客"));
+    var r = submit(guest, bookingId, 5, "游客");
     assertEquals(401, r.getResponse().getStatus(), r.getResponse().getContentAsString());
     assertEquals(0, reviewsOf(bookingId));
   }
@@ -190,8 +206,9 @@ class ReviewTest extends AbstractApiTest {
     var customer = login("customer");
     long bookingId = bookingOf("customer", "COMPLETED");
     for (int rating : new int[] {0, 6}) {
-      var r = request(customer, "POST", "/api/orders/" + bookingId + "/review", review(rating, "越界"));
-      assertEquals(400, r.getResponse().getStatus(), rating + " → " + r.getResponse().getContentAsString());
+      var r = submit(customer, bookingId, rating, "越界");
+      assertEquals(
+          400, r.getResponse().getStatus(), rating + " → " + r.getResponse().getContentAsString());
     }
     assertEquals(0, reviewsOf(bookingId), "校验失败的请求不得落库");
   }
@@ -207,7 +224,7 @@ class ReviewTest extends AbstractApiTest {
     var customer = login("customer");
     long bookingId = bookingOf("customer", "COMPLETED");
 
-    var body = ok(customer, "POST", "/api/orders/" + bookingId + "/review", review(3, null));
+    var body = reviewed(customer, bookingId, 3, null);
 
     assertEquals(3, body.get("rating").asInt());
     assertEquals("", body.get("comment").asText(), "不填文字评价时读作空串，前端不必区分 NULL");
