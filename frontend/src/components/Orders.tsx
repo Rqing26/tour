@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { api, errorMessage } from "../api";
 import { dateLabel, money, statusLabels } from "../assets";
+import { savingsLabel } from "../coupon";
 import {
   ORDER_PAGE_SIZE,
   ORDER_STATUS_TABS,
@@ -408,6 +409,9 @@ export default function Orders({
             </div>
             <strong>¥ {money(selected.totalAmount)}</strong>
           </div>
+          <p className="booking-discount">
+            {savingsLabel(selected.couponCode, selected.discountAmount)}
+          </p>
           <div className="form-actions">
             <button
               className="btn btn-secondary"

@@ -1983,6 +1983,20 @@ svg {
   font-weight: 500;
   letter-spacing: -0.5px;
 }
+/* 减免提示：没有优惠码时文案为空串，用 :empty 收起来，省掉组件里的条件渲染。 */
+.booking-discount {
+  margin: 10px 0 0;
+  padding: 9px 13px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #597539;
+  background: #f1f7e9;
+  border: 1px solid #e2eed4;
+  border-radius: 7px;
+}
+.booking-discount:empty {
+  display: none;
+}
 .order-detail-title {
   display: flex;
   align-items: center;

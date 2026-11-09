@@ -45,6 +45,10 @@ export interface Order {
   contactName: string;
   contactPhone: string;
   remark: string;
+  /** 下单时的优惠码快照；没用优惠码为 null（旧订单也是）。 */
+  couponCode?: string | null;
+  /** 下单时的减免额快照，没用优惠码为 0。 */
+  discountAmount?: number;
 }
 export interface OrderEvent {
   id: number;

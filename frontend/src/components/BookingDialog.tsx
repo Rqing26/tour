@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { CalendarDays, Check, Clock3, MapPin, UsersRound } from "lucide-react";
 import { api, errorMessage } from "../api";
 import { cover, dateLabel, money } from "../assets";
+import { bookingPayload } from "../coupon";
 import type { Route, User } from "../types";
 import { Field, Modal } from "./UI";
 
@@ -23,6 +24,7 @@ export default function BookingDialog({
   const [contactName, setContactName] = useState(user.displayName);
   const [contactPhone, setContactPhone] = useState(user.phone);
   const [remark, setRemark] = useState("");
+  const [coupon, setCoupon] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const localToday = new Date().toLocaleDateString("en-CA");
@@ -33,13 +35,20 @@ export default function BookingDialog({
     setBusy(true);
     setError("");
     try {
-      await api("/orders", "POST", {
-        routeId: route.id,
-        travelerCount,
-        contactName,
-        contactPhone,
-        remark,
-      });
+      await api(
+        "/orders",
+        "POST",
+        bookingPayload(
+          {
+            routeId: route.id,
+            travelerCount,
+            contactName,
+            contactPhone,
+            remark,
+          },
+          coupon,
+        ),
+      );
       onBooked();
     } catch (error) {
       setError(errorMessage(error));
@@ -130,6 +139,18 @@ export default function BookingDialog({
               />
             </Field>
           </div>
+          <Field
+            label="优惠码（选填）"
+            hint="提交时校验有效期、门槛与剩余次数；不符合条件会提示原因，订单不会生成。"
+          >
+            <input
+              maxLength={32}
+              autoComplete="off"
+              placeholder="有优惠码就填在这里"
+              value={coupon}
+              onChange={(e) => setCoupon(e.target.value)}
+            />
+          </Field>
           <div className="booking-total">
             <div>
               <span>订单总额</span>
