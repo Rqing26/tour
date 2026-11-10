@@ -1,6 +1,7 @@
 package cn.shanhai.travel;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Map;
@@ -229,4 +230,80 @@ class ReviewTest extends AbstractApiTest {
     assertEquals(3, body.get("rating").asInt());
     assertEquals("", body.get("comment").asText(), "不填文字评价时读作空串，前端不必区分 NULL");
   }
+
+  // ---- T7.3 均分聚合 ----
+
+  /** 造一条带 n 条评价的线路：一笔订单只能评一次，所以分数与订单一一对应。 */
+  private long ratedRoute(Client customer, int... ratings) throws Exception {
+    long routeId = route(10);
+    for (int rating : ratings) {
+      insert(createOrder(customer, routeId, 1), rating, "");
+    }
+    return routeId;
+  }
+
+  private JsonNode routeIn(JsonNode list, long id) {
+    for (JsonNode node : list) {
+      if (node.get("id").asLong() == id) return node;
+    }
+    fail("线路列表里没有 id=" + id + " 的那条");
+    return null;
+  }
+
+  private JsonNode routeDetail(Client c, long id) throws Exception {
+    var r = mvc.perform(get("/api/routes/" + id).session(c.session())).andReturn();
+    assertEquals(200, r.getResponse().getStatus());
+    return data(r);
+  }
+
+  @Test
+  void routeListCarriesAverageAndCount() throws Exception {
+    var customer = login("customer");
+    long rated = ratedRoute(customer, 5, 4, 4);
+    long untouched = route(10);
+
+    var list = data(mvc.perform(get("/api/routes").session(customer.session())).andReturn());
+
+    var one = routeIn(list, rated);
+    assertEquals(4.3, one.get("avgRating").asDouble(), 1e-9, "5 星、4 星、4 星均分 4.33，保留一位");
+    assertEquals(3, one.get("reviewCount").asInt());
+
+    var none = routeIn(list, untouched);
+    assertTrue(
+        none.get("avgRating").isNull(), "没有评价时给空值而不是 0——0 星和“还没人评”是两件事");
+    assertEquals(0, none.get("reviewCount").asInt());
+  }
+
+  @Test
+  void averageRoundsHalfUpToOneDecimal() throws Exception {
+    var customer = login("customer");
+    // 4+4+4+5 = 17 / 4 = 4.25：四舍五入到一位是 4.3，截断会得 4.2，两者必须能区分。
+    long routeId = ratedRoute(customer, 4, 4, 4, 5);
+
+    var detail = routeDetail(customer, routeId);
+
+    assertEquals(4.3, detail.get("avgRating").asDouble(), 1e-9, "4.25 应进位到 4.3");
+    assertEquals(4, detail.get("reviewCount").asInt());
+    assertEquals(
+        detail.get("avgRating").asDouble(),
+        routeIn(data(mvc.perform(get("/api/routes").session(customer.session())).andReturn()), routeId)
+            .get("avgRating")
+            .asDouble(),
+        1e-9,
+        "列表与详情必须同口径，否则同一个页面上会出现两个均分");
+  }
+
+  @Test
+  void averageOnlyCoversReviewsOfThatRoute() throws Exception {
+    var customer = login("customer");
+    long high = ratedRoute(customer, 5, 5);
+    long low = ratedRoute(customer, 1);
+
+    var list = data(mvc.perform(get("/api/routes").session(customer.session())).andReturn());
+
+    assertEquals(5.0, routeIn(list, high).get("avgRating").asDouble(), 1e-9);
+    assertEquals(1.0, routeIn(list, low).get("avgRating").asDouble(), 1e-9);
+    assertEquals(2, routeIn(list, high).get("reviewCount").asInt());
+  }
+
 }
