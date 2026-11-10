@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hasRating, ratingLabel, ratingText, reviewCountText, starFill } from "../src/rating.ts";
+import {
+  hasRating,
+  ratingLabel,
+  ratingText,
+  reviewCountText,
+  starFill,
+} from "../src/rating.ts";
 
 // 均分来自 GET /api/routes 的两个新增字段（C4）：avgRating 可为空，reviewCount 为 0 表示还没人评。
 const rated = { avgRating: 4.3, reviewCount: 12 };
@@ -10,7 +16,10 @@ test("没有任何评价的线路显示“暂无评分”而不是 0 星", () =>
   assert.equal(hasRating(untouched), false);
   assert.equal(ratingText(untouched), "暂无评分");
   assert.equal(reviewCountText(untouched), "");
-  assert.deepEqual([0, 1, 2, 3, 4].map((i) => starFill(untouched, i)), [0, 0, 0, 0, 0]);
+  assert.deepEqual(
+    [0, 1, 2, 3, 4].map((i) => starFill(untouched, i)),
+    [0, 0, 0, 0, 0],
+  );
 });
 
 test("字段缺失的旧响应也按“暂无评分”处理", () => {
