@@ -1,12 +1,19 @@
 package cn.shanhai.travel;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
+import cn.shanhai.travel.repository.ReviewRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MvcResult;
 
 /**
@@ -17,6 +24,9 @@ import org.springframework.test.web.servlet.MvcResult;
  * 既不接受外部传入（C12），也让均分聚合不必每次回连 {@code bookings}。
  */
 class ReviewTest extends AbstractApiTest {
+  /** 用来数聚合查询被调了几次：均分必须是"一次批量取回"，不能按线路逐条查（N+1）。 */
+  @MockitoSpyBean private ReviewRepository spyReviews;
+
   private Map<String, Object> column(String name) {
     var rows =
         jdbc.queryForList(
@@ -306,4 +316,18 @@ class ReviewTest extends AbstractApiTest {
     assertEquals(2, routeIn(list, high).get("reviewCount").asInt());
   }
 
+  @Test
+  void routeListReadsRatingsInOneQuery() throws Exception {
+    var customer = login("customer");
+    ratedRoute(customer, 5);
+    for (int i = 0; i < 5; i++) route(10); // 线路从 1 条涨到 6 条，查询次数不能跟着涨
+
+    clearInvocations(spyReviews);
+    assertEquals(200, mvc.perform(get("/api/routes").session(customer.session())).andReturn()
+        .getResponse()
+        .getStatus());
+
+    verify(spyReviews, times(1)).averages();
+    verify(spyReviews, never()).average(anyLong());
+  }
 }

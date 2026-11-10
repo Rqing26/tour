@@ -12,28 +12,46 @@ import org.springframework.stereotype.Repository;
 public class RouteRepository {
   private final JdbcTemplate jdbc;
   private final ObjectMapper json;
+  private final ReviewRepository reviews;
 
-  public RouteRepository(JdbcTemplate jdbc, ObjectMapper json) {
+  public RouteRepository(JdbcTemplate jdbc, ObjectMapper json, ReviewRepository reviews) {
     this.jdbc = jdbc;
     this.json = json;
+    this.reviews = reviews;
   }
 
-  private RowMapper<Api.Route> mapper() {
-    return (r, n) ->
-        new Api.Route(
-            r.getLong("id"),
-            r.getString("name"),
-            r.getString("destination"),
-            r.getString("description"),
-            r.getDate("start_date").toLocalDate(),
-            r.getInt("duration_days"),
-            r.getBigDecimal("price"),
-            r.getInt("capacity"),
-            r.getInt("capacity") - sold(r.getLong("id")),
-            r.getBoolean("active"),
-            r.getString("image_key"),
-            readHighlights(r.getString("highlights")),
-            r.getString("image_path"));
+  /**
+   * 行映射带上均分与条数。
+   *
+   * <p>均分由调用方先取好再传进来：列表传全量映射（一次查询），单条传这一条线路的结果。把查询留在 mapper
+   * 里会让每条线路各查一次——那正是列表页的 N+1。
+   */
+  private RowMapper<Api.Route> mapper(Map<Long, Api.RouteRating> ratings) {
+    return (r, n) -> {
+      long id = r.getLong("id");
+      var rating = ratings.get(id);
+      return new Api.Route(
+          id,
+          r.getString("name"),
+          r.getString("destination"),
+          r.getString("description"),
+          r.getDate("start_date").toLocalDate(),
+          r.getInt("duration_days"),
+          r.getBigDecimal("price"),
+          r.getInt("capacity"),
+          r.getInt("capacity") - sold(id),
+          r.getBoolean("active"),
+          r.getString("image_key"),
+          readHighlights(r.getString("highlights")),
+          r.getString("image_path"),
+          rating == null ? null : rating.average(),
+          rating == null ? 0 : rating.count());
+    };
+  }
+
+  /** 单条线路的均分映射：没有评价时给空映射，mapper 读出来是 null 与 0。 */
+  private Map<Long, Api.RouteRating> ratingsOf(long id) {
+    return reviews.average(id).map(rating -> Map.of(id, rating)).orElseGet(Map::of);
   }
 
   private List<String> readHighlights(String raw) {
@@ -53,15 +71,20 @@ public class RouteRepository {
   }
 
   public List<Api.Route> list() {
-    return jdbc.query("SELECT * FROM travel_routes ORDER BY start_date,id", mapper());
+    // 均分一次取全量再逐行装配：线路条数增加不会带来额外查询。
+    var ratings = reviews.averages();
+    return jdbc.query("SELECT * FROM travel_routes ORDER BY start_date,id", mapper(ratings));
   }
 
   public Optional<Api.Route> find(long id) {
-    return jdbc.query("SELECT * FROM travel_routes WHERE id=?", mapper(), id).stream().findFirst();
+    return jdbc.query("SELECT * FROM travel_routes WHERE id=?", mapper(ratingsOf(id)), id).stream()
+        .findFirst();
   }
 
   public Optional<Api.Route> lock(long id) {
-    return jdbc.query("SELECT * FROM travel_routes WHERE id=? FOR UPDATE", mapper(), id).stream()
+    return jdbc
+        .query("SELECT * FROM travel_routes WHERE id=? FOR UPDATE", mapper(ratingsOf(id)), id)
+        .stream()
         .findFirst();
   }
 

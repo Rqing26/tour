@@ -56,7 +56,11 @@ public final class Api {
       String imageKey,
       List<String> highlights,
       /** 上传图片的存盘文件名；从未上传时为 null，前端回退到 imageKey（C7）。 */
-      String imagePath) {}
+      String imagePath,
+      /** 线路均分，保留一位小数；还没有人评价时为 null——0 星与"暂无评分"是两件事。 */
+      Double avgRating,
+      /** 评价条数，0 表示还没有评价。 */
+      int reviewCount) {}
 
   public record RouteInput(
       @NotBlank @Size(max = 100) String name,
@@ -227,6 +231,14 @@ public final class Api {
       @Min(value = 1, message = "评分须为 1–5 星") @Max(value = 5, message = "评分须为 1–5 星")
           int rating,
       @Size(max = 500) String comment) {}
+
+  /**
+   * 一条线路的均分快照，由按 {@code route_id} 分组的一条 SQL 得出。
+   *
+   * <p>它是线路列表的装配原料，不出现在任何接口的响应体里——对外只暴露 {@code Route.avgRating} 与
+   * {@code Route.reviewCount} 两个字段。
+   */
+  public record RouteRating(long routeId, double average, int count) {}
 
   public record Dashboard(
       long totalOrders,
