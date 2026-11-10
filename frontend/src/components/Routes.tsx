@@ -25,6 +25,7 @@ import {
 } from "./UI";
 import RouteForm from "./RouteForm";
 import BookingDialog from "./BookingDialog";
+import Rating from "./Rating";
 
 export default function Routes({
   user,
@@ -218,6 +219,7 @@ export default function Routes({
                 >
                   <h2>{route.name}</h2>
                 </button>
+                <Rating route={route} />
                 <p className="route-description">{route.description}</p>
                 <div className="route-meta">
                   <span>

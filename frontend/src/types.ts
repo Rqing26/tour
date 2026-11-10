@@ -22,8 +22,15 @@ export interface Route {
   imageKey: string;
   highlights: string[];
   imagePath?: string | null;
+  /** 线路均分，一位小数；还没有评价时为 null（后端给空值，这里不能假定是 0）。 */
+  avgRating?: number | null;
+  /** 评价条数，0 表示还没有评价。 */
+  reviewCount?: number;
 }
-export type RouteInput = Omit<Route, "id" | "availableSeats" | "imagePath">;
+export type RouteInput = Omit<
+  Route,
+  "id" | "availableSeats" | "imagePath" | "avgRating" | "reviewCount"
+>;
 export interface Order {
   id: number;
   orderNo: string;

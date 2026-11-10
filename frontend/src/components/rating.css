@@ -1,0 +1,56 @@
+.route-rating {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.route-rating-stars {
+  display: inline-flex;
+  gap: 1px;
+  line-height: 0;
+}
+
+.route-rating-star {
+  position: relative;
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+}
+
+/* 底层灰星只做轮廓：没有评价时整排都是这个颜色。 */
+.route-rating-star-base {
+  color: #d8dee8;
+  fill: #eef1f6;
+}
+
+/* 上层金星按宽度裁切，半颗星就是 50%。 */
+.route-rating-star-fill {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: #d99b22;
+  fill: #d99b22;
+}
+
+.route-rating-star-fill svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.route-rating-text {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.route-rating-count:empty {
+  display: none;
+}
+
+.route-rating-empty .route-rating-text {
+  font-weight: 400;
+  color: #9aa6b6;
+}
