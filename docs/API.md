@@ -44,6 +44,8 @@
 
 上传规则（T4.3 起）：单张 ≤ 5MB（超出 413），只认 PNG / JPEG / WebP 且**以文件头为准**，扩展名与实际内容不符、内容不是图片都返回 400；存盘名由服务端生成（UUID + 归一后缀），原始文件名不入库也不落盘；线路不存在返回 404。响应里的 `imagePath` 是存盘文件名，为空表示从未上传，前端回退到 `imageKey`（C7）。
 
+均分（T7.3 起）：所有返回 `Route` 的接口都带 `avgRating`（一位小数，没人评价时为 `null`）与 `reviewCount`（0 表示还没有评价）。列表接口用一条 `GROUP BY route_id` 的聚合查询一次取回全部均分，线路条数增加不会增加查询次数。
+
 ## 用户
 
 | 方法 | 路径 | 说明 | 权限 |
@@ -154,7 +156,8 @@
 ```text
 User        {id, username, displayName, phone, role, enabled}
 Route       {id, name, destination, description, startDate, durationDays, price,
-             capacity, availableSeats, active, imageKey, highlights, imagePath}
+             capacity, availableSeats, active, imageKey, highlights, imagePath,
+             avgRating, reviewCount}
 Order       {id, orderNo, customerId, customerName, customerPhone, employeeId,
              employeeName, routeId, routeName, destination, startDate, durationDays,
              travelerCount, unitPrice, totalAmount, status, createdAt,
@@ -176,6 +179,7 @@ ReportSummary {scope, totalOrders, pendingOrders, assignedOrders, completedOrder
 
 - `employeeId` / `employeeName` / `fromStatus` 可为 `null`：分别表示尚未接单、下单建档。
 - `imagePath` 可为 `null`：从未上传过封面的线路（含全部演示数据）保持空值，前端回退 `imageKey`。
+- `avgRating` 可为 `null`：还没有任何评价的线路读作空值（`reviewCount` 同时为 `0`），前端显示"暂无评分"而不是 0 星；均分保留一位小数、四舍五入。
 - `couponCode` 可为 `null`：没用优惠码的订单（含全部历史订单）读作空值，`discountAmount` 同时为 `0.00`。
 - `Review.comment` 不填时是空串；每笔订单最多一条评价，`bookingId` 在响应里可当唯一标识用。
 - `totalAmount` 是**折后应收**（未用优惠码时等于"单价 × 人数"），`unitPrice` 始终是线路原价。
