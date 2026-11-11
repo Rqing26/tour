@@ -164,6 +164,10 @@ class ReviewTest extends AbstractApiTest {
 
     var again = submit(customer, bookingId, 1, "改个一星");
     assertEquals(409, again.getResponse().getStatus(), again.getResponse().getContentAsString());
+    assertTrue(
+        again.getResponse().getContentAsString().contains("已经评价过"),
+        "重复提交要给可读原因，而不是通用的“记录重复”："
+            + again.getResponse().getContentAsString());
     assertEquals(1, reviewsOf(bookingId), "被拒的重复评价不能覆盖已有的那条");
     assertEquals(
         4,
