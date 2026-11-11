@@ -10,6 +10,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import cn.shanhai.travel.repository.ReviewRepository;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -329,5 +331,113 @@ class ReviewTest extends AbstractApiTest {
 
     verify(spyReviews, times(1)).averages();
     verify(spyReviews, never()).average(anyLong());
+  }
+
+  // ---- T7.5 评价回归：均分即时性、与订单互不干扰、并发重复提交 ----
+
+  /** 走真实链路造一笔已完成订单：下单 → 员工接单 → 员工完成，同时在审计表留下 3 条事件。 */
+  private long completedOrder(Client customer, Client employee, long routeId) throws Exception {
+    long id = createOrder(customer, routeId, 1);
+    ok(employee, "POST", "/api/orders/" + id + "/claim", Map.of());
+    ok(employee, "POST", "/api/orders/" + id + "/complete", Map.of());
+    return id;
+  }
+
+  private int eventsOf(long bookingId) {
+    return jdbc.queryForObject(
+        "SELECT COUNT(*) FROM booking_events WHERE booking_id=?", Integer.class, bookingId);
+  }
+
+  /**
+   * 均分随每一条新评价立刻变化，不是"只在启动时算一次"。
+   *
+   * <p>三次读取分别落在 0 条、1 条、2 条评价上：没有评价时给空值而不是 0，4 星单人时 4.0，再加一条 5 星变
+   * 4.5。中间没有任何可失效的缓存，页面才不会出现"评了但分数不动"。
+   */
+  @Test
+  void averageFollowsEachNewReview() throws Exception {
+    var customer = login("customer");
+    var employee = login("employee");
+    long routeId = route(10);
+    long first = completedOrder(customer, employee, routeId);
+
+    var empty = routeDetail(customer, routeId);
+    assertTrue(empty.get("avgRating").isNull(), "还没有人评时详情也给空值，而不是 0 星");
+    assertEquals(0, empty.get("reviewCount").asInt());
+
+    reviewed(customer, first, 4, "第一次");
+    var one = routeDetail(customer, routeId);
+    assertEquals(4.0, one.get("avgRating").asDouble(), 1e-9);
+    assertEquals(1, one.get("reviewCount").asInt());
+
+    long second = completedOrder(customer, employee, routeId);
+    reviewed(customer, second, 5, "第二次");
+    var two = routeDetail(customer, routeId);
+    assertEquals(4.5, two.get("avgRating").asDouble(), 1e-9, "两笔订单各评一次，均分应为 4.5");
+    assertEquals(2, two.get("reviewCount").asInt(), "唯一键钉的是订单，同一线路可以有多条评价");
+    assertEquals(
+        4.5,
+        routeIn(data(mvc.perform(get("/api/routes").session(customer.session())).andReturn()), routeId)
+            .get("avgRating")
+            .asDouble(),
+        1e-9,
+        "列表要跟着变，否则同一页面上详情与列表会给出两个分数");
+  }
+
+  /** 评价是订单的附属动作：写完评价，订单状态与审计时间线都不该有任何变化。 */
+  @Test
+  void reviewLeavesOrderStateAndTimelineAlone() throws Exception {
+    var customer = login("customer");
+    var employee = login("employee");
+    long bookingId = completedOrder(customer, employee, route(10));
+    assertEquals(3, eventsOf(bookingId), "下单、接单、完成各留一条事件");
+
+    reviewed(customer, bookingId, 4, "已完成行程");
+
+    var order = orders.find(bookingId).orElseThrow();
+    assertEquals("COMPLETED", order.status(), "评价不改订单状态");
+    assertEquals(3, eventsOf(bookingId), "评价不是状态迁移，不得往时间线里塞事件");
+    assertEquals(users.byUsername("employee").orElseThrow().id(), order.employeeId());
+  }
+
+  /**
+   * 编辑线路（改价格与容量）之后均分仍在。
+   *
+   * <p>均分是在仓储的 {@code find} 里装配的，而 {@code create} / {@code update} / {@code uploadImage}
+   * 都走同一个 {@code find}；只在某个 service 入口补一次的实现，编辑完线路就会突然显示"暂无评分"。
+   */
+  @Test
+  void editingRouteKeepsAverage() throws Exception {
+    var customer = login("customer");
+    var admin = login("admin");
+    long routeId = ratedRoute(customer, 5, 4, 4);
+    var start = routes.find(routeId).orElseThrow().startDate();
+
+    ok(admin, "PUT", "/api/routes/" + routeId, edit(routeId, "1300.00", 12, start));
+
+    var detail = routeDetail(customer, routeId);
+    assertEquals(4.3, detail.get("avgRating").asDouble(), 1e-9, "编辑线路不该把评分清成“暂无评分”");
+    assertEquals(3, detail.get("reviewCount").asInt());
+    assertEquals(
+        0, new BigDecimal("1300.00").compareTo(detail.get("price").decimalValue()), "价格按编辑生效");
+  }
+
+  /**
+   * 同一笔订单并发提交两次：恰好一条写入，另一个拿 409。
+   *
+   * <p>闸门是唯一键而不是"先查再插"——后者两次读之间正是两个请求都认为"还没评过"的窗口。
+   */
+  @Test
+  void concurrentDuplicateReviewsKeepOneRow() throws Exception {
+    var customer = login("customer");
+    long bookingId = bookingOf("customer", "COMPLETED");
+
+    var statuses =
+        concurrent(
+            () -> submit(customer, bookingId, 5, "并发一").getResponse().getStatus(),
+            () -> submit(customer, bookingId, 3, "并发二").getResponse().getStatus());
+
+    assertEquals(List.of(200, 409), statuses, "两个请求不能都成功，也不该都失败");
+    assertEquals(1, reviewsOf(bookingId), "并发重复提交在库里只留一条");
   }
 }
