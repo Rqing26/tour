@@ -8,6 +8,7 @@
 - 会话：Spring Security 服务端会话（`JSESSIONID`），登录成功后会话 ID 轮换，**必须重新取 CSRF 令牌**。
 - CSRF：所有非 GET 请求必须带 `X-CSRF-TOKEN`，令牌从 `GET /auth/csrf` 获得（响应 `{token}`）。
 - 请求体与响应体均为 JSON（`Content-Type: application/json`）。
+- 删除类接口（线路、用户、优惠码）成功时返回 `{"message": "..."}`，文案是给人看的；前端不应据此判断业务结果，状态码才是契约。
 - 错误统一为 `{"message": "..."}`，状态码语义：
 
 | 状态码 | 含义 |
@@ -143,11 +144,13 @@
 
 统计范围由会话角色决定，没有"看别人"的参数：ADMIN 全量、CUSTOMER 只看自己的订单、EMPLOYEE 只看**已归属自己名下**的订单（待接池没有负责人，不算业绩——与工作台的可见口径不同）。`employeeRank` 只在 ADMIN 时非空，其余角色返回空数组，页面据此隐藏该区块。
 
+两处工作台与报表的差异不要混用：工作台 `/dashboard` 沿用订单列表的可见范围（员工含待接池），报表 `/reports/summary` 只算已归属本人的订单；`Dashboard.monthlyOrders` 的元素是 `{month,count}`，`ReportSummary.monthly` 的元素是 `{month,orders,revenue}`，是两个模型而不是同一个字段的两种写法（改名或合并会撞 C4）。
+
 ## 运维
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/actuator/health` | 健康检查，匿名可读，只返回 `{"status":"UP"}` |
+| GET | `/actuator/health` | 健康检查，匿名可读，返回 `{"status":"UP","groups":["liveness","readiness"]}`，不含组件细节 |
 | GET | `/v3/api-docs` | OpenAPI JSON |
 | GET | `/swagger-ui/index.html` | 接口文档页面 |
 
@@ -170,6 +173,10 @@ CouponInput {code, description, discountRate, minAmount, maxUses, startsOn, ends
 Review      {id, bookingId, routeId, customerId, rating, comment, createdAt}
 ReviewInput {rating, comment?}
 Page<T>     {items: T[], total, page, size}
+Dashboard   {totalOrders, pendingOrders, assignedOrders, completedOrders, cancelledOrders,
+             totalAmount, completedAmount, activeRoutes, customerCount, employeeCount,
+             recentOrders: Order[], popularRoutes: [{routeId, name, destination, orderCount, travelerCount}],
+             monthlyOrders: [{month, count}]}
 ReportSummary {scope, totalOrders, pendingOrders, assignedOrders, completedOrders,
                cancelledOrders, totalAmount, completedAmount,
                monthly: [{month, orders, revenue}],
