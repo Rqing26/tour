@@ -14,6 +14,8 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 @RestControllerAdvice
 public class ApiErrorHandler {
@@ -70,6 +72,26 @@ public class ApiErrorHandler {
   @ExceptionHandler(DataIntegrityViolationException.class)
   ResponseEntity<?> conflict(DataIntegrityViolationException e) {
     return response(HttpStatus.CONFLICT, "记录重复或已被其他数据引用，请刷新后重试");
+  }
+
+  /** 路径存在但方法不对：这是调用方用错了协议，不是服务端故障，不能落到通用 500。 */
+  @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+  ResponseEntity<?> wrongMethod(HttpRequestMethodNotSupportedException e) {
+    var supported = e.getSupportedHttpMethods();
+    var hint = supported == null || supported.isEmpty() ? "" : "，请改用 " + supported;
+    return response(
+        HttpStatus.METHOD_NOT_ALLOWED, "该接口不支持 " + e.getMethod() + " 方法" + hint);
+  }
+
+  /**
+   * 请求体格式不支持（例如把表单或 XML 打给只吃 JSON 的接口）。
+   *
+   * <p>它与 400 的区别是对外契约问题：400 表示"内容能读但不对"，415 表示"根本没按约定格式发"。
+   */
+  @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+  ResponseEntity<?> unsupportedType(HttpMediaTypeNotSupportedException e) {
+    return response(
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE, "请求格式不受支持，请使用 application/json");
   }
 
   @ExceptionHandler(Exception.class)
